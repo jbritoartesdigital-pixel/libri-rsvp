@@ -24,9 +24,23 @@ const fmtDate = (date) =>
       }).format(new Date(`${date}T12:00:00`))
     : "Data não informada";
 
+const fmtDateTime = (value) => {
+  if (!value) return "Data não informada";
+
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+};
+
 async function api(url, options = {}) {
   const response = await fetch(url, {
     ...options,
+
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
@@ -66,7 +80,7 @@ function toast(message, error = false) {
 
   toastTimer = setTimeout(() => {
     toastEl.className = "toast";
-  }, 3200);
+  }, 3500);
 }
 
 function topbar(extra = "") {
@@ -81,6 +95,7 @@ function topbar(extra = "") {
 
         <div>
           <h1>Libri RSVP</h1>
+
           <small>
             Confirmação de presença
           </small>
@@ -92,6 +107,118 @@ function topbar(extra = "") {
 
     </div>
   `;
+}
+
+function statusLabel(status) {
+  if (status === "yes") {
+    return "Confirmado";
+  }
+
+  if (status === "no") {
+    return "Não irá";
+  }
+
+  return "Pendente";
+}
+
+function sourceLabel(source) {
+  const labels = {
+    admin: "Libri",
+    client: "Cliente",
+    public: "Convidado",
+    import: "Importação",
+  };
+
+  return labels[source] || source || "—";
+}
+
+function actorLabel(role) {
+  const labels = {
+    admin: "Libri",
+    client: "Cliente",
+    public: "Convidado",
+    system: "Sistema",
+  };
+
+  return labels[role] || role;
+}
+
+function actionLabel(action) {
+  const labels = {
+    event_created: "Evento criado",
+    event_updated: "Evento editado",
+    event_paused: "Confirmações pausadas",
+    event_reactivated: "Confirmações reativadas",
+    event_archived: "Evento arquivado",
+    event_unarchived: "Evento restaurado",
+    client_link_reset: "Link da cliente substituído",
+
+    guest_created: "Convidado adicionado",
+    guest_updated: "Convidado editado",
+    guest_deleted: "Convidado excluído",
+    guest_restored: "Convidado restaurado",
+
+    rsvp_submitted: "Confirmação enviada",
+  };
+
+  return labels[action] || action;
+}
+
+function closeModal(wrap) {
+  wrap.remove();
+}
+
+function modalShell(title, content, subtitle = "") {
+  const wrap =
+    document.createElement("div");
+
+  wrap.className =
+    "modal-backdrop";
+
+  wrap.innerHTML = `
+    <div class="modal">
+
+      <button
+        class="close"
+        type="button"
+        aria-label="Fechar"
+      >
+        ×
+      </button>
+
+      <h2>
+        ${esc(title)}
+      </h2>
+
+      ${
+        subtitle
+          ? `
+            <p class="subtle">
+              ${esc(subtitle)}
+            </p>
+          `
+          : ""
+      }
+
+      ${content}
+
+    </div>
+  `;
+
+  document.body.append(wrap);
+
+  wrap
+    .querySelector(".close")
+    .onclick = () =>
+      closeModal(wrap);
+
+  wrap.onclick = (event) => {
+    if (event.target === wrap) {
+      closeModal(wrap);
+    }
+  };
+
+  return wrap;
 }
 
 // =========================================================
@@ -138,7 +265,7 @@ function home() {
         </h1>
 
         <p class="meta">
-          Ferramenta de confirmação de presença.
+          Plataforma de confirmação de presença.
         </p>
 
         <div class="actions">
@@ -175,7 +302,7 @@ async function adminApp() {
         </h1>
 
         <p class="meta">
-          Use sua senha administrativa.
+          Acesso administrativo.
         </p>
 
         <form id="login">
@@ -261,10 +388,16 @@ async function adminApp() {
 // DASHBOARD ADMIN
 // =========================================================
 
-async function renderAdminDashboard() {
+async function renderAdminDashboard(
+  showArchived = false
+) {
   const data =
     await api(
-      "/api/admin/events"
+      `/api/admin/events${
+        showArchived
+          ? "?archived=1"
+          : ""
+      }`
     );
 
   app.innerHTML = `
@@ -294,8 +427,8 @@ async function renderAdminDashboard() {
             </h2>
 
             <p>
-              Crie eventos, acompanhe confirmações
-              e entregue à cliente um painel privado.
+              Acompanhe confirmações, clientes,
+              listas, mensagens e histórico.
             </p>
 
           </div>
@@ -313,14 +446,33 @@ async function renderAdminDashboard() {
 
       <div class="section-title">
 
-        <h2>
-          Eventos
-        </h2>
+        <div>
 
-        <span class="meta">
-          ${data.events.length}
-          cadastrado(s)
-        </span>
+          <h2>
+            ${
+              showArchived
+                ? "Eventos arquivados"
+                : "Eventos ativos"
+            }
+          </h2>
+
+          <span class="meta">
+            ${data.events.length}
+            cadastrado(s)
+          </span>
+
+        </div>
+
+        <button
+          class="btn secondary small"
+          id="toggleArchived"
+        >
+          ${
+            showArchived
+              ? "← Voltar aos ativos"
+              : "Ver arquivados"
+          }
+        </button>
 
       </div>
 
@@ -332,12 +484,23 @@ async function renderAdminDashboard() {
         ${
           data.events.length
             ? data.events
-                .map(eventCard)
+                .map(
+                  (event) =>
+                    eventCard(
+                      event,
+                      showArchived
+                    )
+                )
                 .join("")
             : `
               <div class="empty">
-                Nenhum evento ainda.
-                Crie o primeiro evento.
+
+                ${
+                  showArchived
+                    ? "Nenhum evento arquivado."
+                    : "Nenhum evento ativo ainda."
+                }
+
               </div>
             `
         }
@@ -368,6 +531,16 @@ async function renderAdminDashboard() {
     };
 
   document
+    .querySelector(
+      "#toggleArchived"
+    )
+    .onclick = () => {
+      renderAdminDashboard(
+        !showArchived
+      );
+    };
+
+  document
     .querySelectorAll(
       "[data-event]"
     )
@@ -377,9 +550,44 @@ async function renderAdminDashboard() {
           button.dataset.event
         );
     });
+
+  document
+    .querySelectorAll(
+      "[data-unarchive]"
+    )
+    .forEach((button) => {
+      button.onclick =
+        async () => {
+          try {
+            await api(
+              `/api/admin/events/${button.dataset.unarchive}/unarchive`,
+              {
+                method: "POST",
+                body: "{}",
+              }
+            );
+
+            toast(
+              "Evento restaurado."
+            );
+
+            renderAdminDashboard(
+              true
+            );
+          } catch (error) {
+            toast(
+              error.message,
+              true
+            );
+          }
+        };
+    });
 }
 
-function eventCard(event) {
+function eventCard(
+  event,
+  archivedView = false
+) {
   return `
     <article class="event-card">
 
@@ -389,7 +597,9 @@ function eventCard(event) {
 
         ${
           event.event_time
-            ? ` • ${esc(event.event_time)}`
+            ? ` • ${esc(
+                event.event_time
+              )}`
             : ""
         }
 
@@ -414,9 +624,11 @@ function eventCard(event) {
         <span class="chip">
 
           ${
-            event.status === "active"
-              ? "Ativo"
-              : "Inativo"
+            event.archived_at
+              ? "Arquivado"
+              : event.accepting_rsvp
+                ? "Recebendo confirmações"
+                : "Fechado"
           }
 
         </span>
@@ -432,7 +644,7 @@ function eventCard(event) {
           </strong>
 
           <span>
-            sim
+            confirmações
           </span>
 
         </div>
@@ -444,19 +656,7 @@ function eventCard(event) {
           </strong>
 
           <span>
-            não
-          </span>
-
-        </div>
-
-        <div class="stat pending">
-
-          <strong>
-            ${event.pending_responses}
-          </strong>
-
-          <span>
-            pend.
+            recusas
           </span>
 
         </div>
@@ -464,759 +664,594 @@ function eventCard(event) {
         <div class="stat">
 
           <strong>
-            ${event.people_confirmed}
+            ${event.adults_confirmed || 0}
           </strong>
 
           <span>
-            pessoas
+            adultos
+          </span>
+
+        </div>
+
+        <div class="stat">
+
+          <strong>
+            ${event.children_confirmed || 0}
+          </strong>
+
+          <span>
+            crianças
           </span>
 
         </div>
 
       </div>
 
-      <button
-        class="btn secondary"
-        data-event="${esc(event.id)}"
+      <div class="subtle">
+        ${
+          event.people_confirmed || 0
+        }
+        pessoa(s) confirmada(s)
+      </div>
+
+      <div
+        class="actions"
+        style="margin-top:14px"
       >
-        Abrir painel
-      </button>
+
+        <button
+          class="btn secondary"
+          data-event="${esc(event.id)}"
+        >
+          Abrir painel
+        </button>
+
+        ${
+          archivedView
+            ? `
+              <button
+                class="btn secondary"
+                data-unarchive="${esc(
+                  event.id
+                )}"
+              >
+                Restaurar
+              </button>
+            `
+            : ""
+        }
+
+      </div>
 
     </article>
   `;
 }
 
 // =========================================================
-// CRIAR EVENTO
+// FORMULÁRIO DE EVENTO
 // =========================================================
 
-function createEventModal() {
-  const wrap =
-    document.createElement("div");
-
-  wrap.className =
-    "modal-backdrop";
-
-  wrap.innerHTML = `
-    <div class="modal">
-
-      <button
-        class="close"
-        type="button"
-      >
-        ×
-      </button>
-
-      <h2>
-        Novo evento
-      </h2>
-
-      <form>
-
-        <div class="field">
-
-          <label>
-            Nome do evento
-          </label>
-
-          <input
-            name="title"
-            placeholder="Helena • 1 aninho"
-            required
-          >
-
-        </div>
-
-        <div class="row">
-
-          <div class="field">
-
-            <label>
-              Data
-            </label>
-
-            <input
-              type="date"
-              name="event_date"
-            >
-
-          </div>
-
-          <div class="field">
-
-            <label>
-              Horário
-            </label>
-
-            <input
-              type="time"
-              name="event_time"
-            >
-
-          </div>
-
-        </div>
-
-        <div class="field">
-
-          <label>
-            Tipo de confirmação
-          </label>
-
-          <select name="rsvp_mode">
-
-            <option value="free">
-              Confirmação livre
-            </option>
-
-            <option value="list">
-              Lista pré-cadastrada
-            </option>
-
-          </select>
-
-        </div>
-
-        <div class="field">
-
-          <label>
-            Mensagem para os convidados
-          </label>
-
-          <textarea
-            name="welcome_message"
-            rows="3"
-            placeholder="Ficaremos muito felizes em celebrar com você!"
-          ></textarea>
-
-        </div>
-
-        <div class="row">
-
-          <div class="field">
-
-            <label>
-              Cor principal
-            </label>
-
-            <input
-              type="color"
-              name="primary_color"
-              value="#6f4f5f"
-            >
-
-          </div>
-
-          <div class="field">
-
-            <label>
-              Cor suave
-            </label>
-
-            <input
-              type="color"
-              name="accent_color"
-              value="#f4e8ed"
-            >
-
-          </div>
-
-        </div>
-
-        <div class="divider"></div>
-
-        <strong>
-          Campos da confirmação
-        </strong>
-
-        <p class="subtle">
-          Escolha o que o convidado deverá preencher.
-        </p>
-
-        <div class="checks">
-
-          <label class="check">
-
-            <input
-              type="checkbox"
-              name="adults_children"
-              checked
-            >
-
-            Adultos e crianças
-
-          </label>
-
-          <label class="check">
-
-            <input
-              type="checkbox"
-              name="companions"
-              checked
-            >
-
-            Nome dos acompanhantes
-
-          </label>
-
-          <label class="check">
-
-            <input
-              type="checkbox"
-              name="phone"
-            >
-
-            Telefone
-
-          </label>
-
-          <label class="check">
-
-            <input
-              type="checkbox"
-              name="dietary"
-            >
-
-            Restrição alimentar
-
-          </label>
-
-          <label class="check">
-
-            <input
-              type="checkbox"
-              name="notes"
-            >
-
-            Observações
-
-          </label>
-
-        </div>
-
-        <div class="divider"></div>
-
-        <button
-          class="btn"
-          type="submit"
-        >
-          Criar evento
-        </button>
-
-      </form>
-
-    </div>
-  `;
-
-  document.body.append(wrap);
-
-  wrap
-    .querySelector(".close")
-    .onclick = () => {
-      wrap.remove();
-    };
-
-  wrap.onclick = (event) => {
-    if (event.target === wrap) {
-      wrap.remove();
-    }
-  };
-
-  wrap
-    .querySelector("form")
-    .onsubmit = async (event) => {
-      event.preventDefault();
-
-      const form =
-        new FormData(
-          event.currentTarget
-        );
-
-      const button =
-        event.submitter;
-
-      button.disabled = true;
-
-      try {
-        const data = await api(
-          "/api/admin/events",
-          {
-            method: "POST",
-
-            body: JSON.stringify({
-              title:
-                form.get("title"),
-
-              event_date:
-                form.get("event_date"),
-
-              event_time:
-                form.get("event_time"),
-
-              rsvp_mode:
-                form.get("rsvp_mode"),
-
-              welcome_message:
-                form.get(
-                  "welcome_message"
-                ),
-
-              primary_color:
-                form.get(
-                  "primary_color"
-                ),
-
-              accent_color:
-                form.get(
-                  "accent_color"
-                ),
-
-              extra_fields: {
-                adults_children:
-                  form.has(
-                    "adults_children"
-                  ),
-
-                companions:
-                  form.has(
-                    "companions"
-                  ),
-
-                phone:
-                  form.has(
-                    "phone"
-                  ),
-
-                dietary:
-                  form.has(
-                    "dietary"
-                  ),
-
-                notes:
-                  form.has(
-                    "notes"
-                  ),
-              },
-            }),
-          }
-        );
-
-        wrap.remove();
-
-        toast(
-          "Evento criado. ✨"
-        );
-
-        renderAdminEvent(
-          data.event.id
-        );
-      } catch (error) {
-        toast(
-          error.message,
-          true
-        );
-      } finally {
-        button.disabled = false;
-      }
-    };
-}
-
-// =========================================================
-// EDITAR EVENTO
-// =========================================================
-
-function editEventModal(eventData) {
+function eventFormHtml(
+  eventData = null
+) {
   const fields =
-    eventData.extra_fields || {};
+    eventData?.extra_fields ||
+    {};
 
-  const wrap =
-    document.createElement("div");
+  return `
+    <form id="eventForm">
 
-  wrap.className =
-    "modal-backdrop";
+      <div class="field">
 
-  wrap.innerHTML = `
-    <div class="modal">
+        <label>
+          Nome do evento
+        </label>
 
-      <button
-        class="close"
-        type="button"
-      >
-        ×
-      </button>
+        <input
+          name="title"
+          required
+          placeholder="Helena • 1 aninho"
+          value="${esc(
+            eventData?.title || ""
+          )}"
+        >
 
-      <h2>
-        Editar evento
-      </h2>
+      </div>
 
-      <p class="subtle">
-        Alterar o nome não muda o link público já criado.
-      </p>
-
-      <form>
+      <div class="row">
 
         <div class="field">
 
           <label>
-            Nome do evento
+            Data do evento
           </label>
 
           <input
-            name="title"
-            required
+            type="date"
+            name="event_date"
             value="${esc(
-              eventData.title
+              eventData?.event_date ||
+                ""
             )}"
           >
 
         </div>
 
-        <div class="row">
-
-          <div class="field">
-
-            <label>
-              Data
-            </label>
-
-            <input
-              type="date"
-              name="event_date"
-              value="${esc(
-                eventData.event_date || ""
-              )}"
-            >
-
-          </div>
-
-          <div class="field">
-
-            <label>
-              Horário
-            </label>
-
-            <input
-              type="time"
-              name="event_time"
-              value="${esc(
-                eventData.event_time || ""
-              )}"
-            >
-
-          </div>
-
-        </div>
-
         <div class="field">
 
           <label>
-            Tipo de confirmação
+            Horário
           </label>
 
-          <select name="rsvp_mode">
-
-            <option
-              value="free"
-              ${
-                eventData.rsvp_mode === "free"
-                  ? "selected"
-                  : ""
-              }
-            >
-              Confirmação livre
-            </option>
-
-            <option
-              value="list"
-              ${
-                eventData.rsvp_mode === "list"
-                  ? "selected"
-                  : ""
-              }
-            >
-              Lista pré-cadastrada
-            </option>
-
-          </select>
+          <input
+            type="time"
+            name="event_time"
+            value="${esc(
+              eventData?.event_time ||
+                ""
+            )}"
+          >
 
         </div>
 
-        <div class="field">
+      </div>
 
-          <label>
-            Mensagem para os convidados
-          </label>
+      <div class="field">
 
-          <textarea
-            name="welcome_message"
-            rows="3"
-          >${esc(
-            eventData.welcome_message || ""
-          )}</textarea>
+        <label>
+          Tipo de confirmação
+        </label>
 
-        </div>
+        <select name="rsvp_mode">
 
-        <div class="row">
+          <option
+            value="free"
+            ${
+              !eventData ||
+              eventData.rsvp_mode ===
+                "free"
+                ? "selected"
+                : ""
+            }
+          >
+            Confirmação livre
+          </option>
 
-          <div class="field">
+          <option
+            value="list"
+            ${
+              eventData?.rsvp_mode ===
+              "list"
+                ? "selected"
+                : ""
+            }
+          >
+            Lista pré-cadastrada
+          </option>
 
-            <label>
-              Cor principal
-            </label>
+        </select>
 
-            <input
-              type="color"
-              name="primary_color"
-              value="${esc(
-                eventData.primary_color ||
-                  "#6f4f5f"
-              )}"
-            >
+      </div>
 
-          </div>
+      <div class="field">
 
-          <div class="field">
+        <label>
+          Mensagem para os convidados
+        </label>
 
-            <label>
-              Cor suave
-            </label>
+        <textarea
+          name="welcome_message"
+          rows="3"
+          placeholder="Ficaremos muito felizes em celebrar com você!"
+        >${esc(
+          eventData?.welcome_message ||
+            ""
+        )}</textarea>
 
-            <input
-              type="color"
-              name="accent_color"
-              value="${esc(
-                eventData.accent_color ||
-                  "#f4e8ed"
-              )}"
-            >
+      </div>
 
-          </div>
+      <div class="field">
 
-        </div>
+        <label>
+          URL da imagem de fundo
+        </label>
 
-        <div class="divider"></div>
-
-        <strong>
-          Campos da confirmação
-        </strong>
-
-        <p class="subtle">
-          Você pode ativar ou retirar perguntas sem alterar o link.
-        </p>
-
-        <div class="checks">
-
-          <label class="check">
-
-            <input
-              type="checkbox"
-              name="adults_children"
-              ${
-                fields.adults_children !== false
-                  ? "checked"
-                  : ""
-              }
-            >
-
-            Adultos e crianças
-
-          </label>
-
-          <label class="check">
-
-            <input
-              type="checkbox"
-              name="companions"
-              ${
-                fields.companions !== false
-                  ? "checked"
-                  : ""
-              }
-            >
-
-            Nome dos acompanhantes
-
-          </label>
-
-          <label class="check">
-
-            <input
-              type="checkbox"
-              name="phone"
-              ${
-                fields.phone
-                  ? "checked"
-                  : ""
-              }
-            >
-
-            Telefone
-
-          </label>
-
-          <label class="check">
-
-            <input
-              type="checkbox"
-              name="dietary"
-              ${
-                fields.dietary
-                  ? "checked"
-                  : ""
-              }
-            >
-
-            Restrição alimentar
-
-          </label>
-
-          <label class="check">
-
-            <input
-              type="checkbox"
-              name="notes"
-              ${
-                fields.notes
-                  ? "checked"
-                  : ""
-              }
-            >
-
-            Observações
-
-          </label>
-
-        </div>
-
-        <div class="divider"></div>
-
-        <button
-          class="btn"
-          type="submit"
+        <input
+          type="url"
+          name="background_image_url"
+          placeholder="https://..."
+          value="${esc(
+            eventData?.background_image_url ||
+              ""
+          )}"
         >
-          Salvar alterações
-        </button>
 
-      </form>
+        <span class="subtle">
+          Opcional. Depois podemos facilitar o upload direto.
+        </span>
 
-    </div>
+      </div>
+
+      <div class="row">
+
+        <div class="field">
+
+          <label>
+            Cor principal
+          </label>
+
+          <input
+            type="color"
+            name="primary_color"
+            value="${esc(
+              eventData?.primary_color ||
+                "#6f4f5f"
+            )}"
+          >
+
+        </div>
+
+        <div class="field">
+
+          <label>
+            Cor suave
+          </label>
+
+          <input
+            type="color"
+            name="accent_color"
+            value="${esc(
+              eventData?.accent_color ||
+                "#f4e8ed"
+            )}"
+          >
+
+        </div>
+
+      </div>
+
+      <div class="divider"></div>
+
+      <h3>
+        Regras da confirmação
+      </h3>
+
+      <div class="row">
+
+        <div class="field">
+
+          <label>
+            Prazo para confirmar
+          </label>
+
+          <input
+            type="date"
+            name="rsvp_deadline"
+            value="${esc(
+              eventData?.rsvp_deadline ||
+                ""
+            )}"
+          >
+
+          <span class="subtle">
+            Deixe vazio para não ter prazo.
+          </span>
+
+        </div>
+
+        <div class="field">
+
+          <label>
+            Máximo de pessoas por confirmação
+          </label>
+
+          <input
+            type="number"
+            min="1"
+            max="100"
+            name="max_people_per_rsvp"
+            placeholder="Sem limite"
+            value="${esc(
+              eventData?.max_people_per_rsvp ??
+                ""
+            )}"
+          >
+
+        </div>
+
+      </div>
+
+      <div class="divider"></div>
+
+      <h3>
+        Campos opcionais
+      </h3>
+
+      <div class="checks">
+
+        <label class="check">
+
+          <input
+            type="checkbox"
+            name="phone"
+            ${
+              fields.phone
+                ? "checked"
+                : ""
+            }
+          >
+
+          Telefone
+
+        </label>
+
+        <label class="check">
+
+          <input
+            type="checkbox"
+            name="dietary"
+            ${
+              fields.dietary
+                ? "checked"
+                : ""
+            }
+          >
+
+          Restrição alimentar
+
+        </label>
+
+        <label class="check">
+
+          <input
+            type="checkbox"
+            name="notes"
+            ${
+              fields.notes
+                ? "checked"
+                : ""
+            }
+          >
+
+          Observações
+
+        </label>
+
+        <label class="check">
+
+          <input
+            type="checkbox"
+            name="love_message"
+            ${
+              eventData
+                ? fields.love_message !==
+                  false
+                  ? "checked"
+                  : ""
+                : "checked"
+            }
+          >
+
+          Mensagem carinhosa 💌
+
+        </label>
+
+      </div>
+
+      <div class="divider"></div>
+
+      <button
+        class="btn"
+        type="submit"
+      >
+        ${
+          eventData
+            ? "Salvar alterações"
+            : "Criar evento"
+        }
+      </button>
+
+    </form>
   `;
+}
 
-  document.body.append(wrap);
+function eventPayloadFromForm(formElement) {
+  const form =
+    new FormData(
+      formElement
+    );
 
-  wrap
-    .querySelector(".close")
-    .onclick = () => {
-      wrap.remove();
-    };
+  return {
+    title:
+      form.get("title"),
 
-  wrap.onclick = (event) => {
-    if (event.target === wrap) {
-      wrap.remove();
-    }
+    event_date:
+      form.get(
+        "event_date"
+      ),
+
+    event_time:
+      form.get(
+        "event_time"
+      ),
+
+    rsvp_mode:
+      form.get(
+        "rsvp_mode"
+      ),
+
+    welcome_message:
+      form.get(
+        "welcome_message"
+      ),
+
+    background_image_url:
+      form.get(
+        "background_image_url"
+      ),
+
+    primary_color:
+      form.get(
+        "primary_color"
+      ),
+
+    accent_color:
+      form.get(
+        "accent_color"
+      ),
+
+    rsvp_deadline:
+      form.get(
+        "rsvp_deadline"
+      ),
+
+    max_people_per_rsvp:
+      form.get(
+        "max_people_per_rsvp"
+      ),
+
+    extra_fields: {
+      phone:
+        form.has(
+          "phone"
+        ),
+
+      dietary:
+        form.has(
+          "dietary"
+        ),
+
+      notes:
+        form.has(
+          "notes"
+        ),
+
+      love_message:
+        form.has(
+          "love_message"
+        ),
+    },
   };
+}
+
+function createEventModal() {
+  const wrap =
+    modalShell(
+      "Novo evento",
+      eventFormHtml()
+    );
 
   wrap
-    .querySelector("form")
-    .onsubmit = async (event) => {
-      event.preventDefault();
+    .querySelector(
+      "#eventForm"
+    )
+    .onsubmit =
+      async (event) => {
+        event.preventDefault();
 
-      const form =
-        new FormData(
-          event.currentTarget
-        );
+        const button =
+          event.submitter;
 
-      const button =
-        event.submitter;
+        button.disabled = true;
 
-      button.disabled = true;
+        try {
+          const data =
+            await api(
+              "/api/admin/events",
+              {
+                method: "POST",
 
-      try {
-        await api(
-          `/api/admin/events/${eventData.id}`,
-          {
-            method: "PATCH",
+                body:
+                  JSON.stringify(
+                    eventPayloadFromForm(
+                      event.currentTarget
+                    )
+                  ),
+              }
+            );
 
-            body: JSON.stringify({
-              title:
-                form.get("title"),
+          closeModal(wrap);
 
-              event_date:
-                form.get("event_date"),
+          toast(
+            "Evento criado. ✨"
+          );
 
-              event_time:
-                form.get("event_time"),
+          renderAdminEvent(
+            data.event.id
+          );
+        } catch (error) {
+          toast(
+            error.message,
+            true
+          );
 
-              rsvp_mode:
-                form.get("rsvp_mode"),
+          button.disabled = false;
+        }
+      };
+}
 
-              welcome_message:
-                form.get(
-                  "welcome_message"
+function editEventModal(
+  eventData
+) {
+  const wrap =
+    modalShell(
+      "Editar evento",
+      eventFormHtml(
+        eventData
+      ),
+      "O link público não muda quando você altera o nome."
+    );
+
+  wrap
+    .querySelector(
+      "#eventForm"
+    )
+    .onsubmit =
+      async (event) => {
+        event.preventDefault();
+
+        const button =
+          event.submitter;
+
+        button.disabled = true;
+
+        try {
+          await api(
+            `/api/admin/events/${eventData.id}`,
+            {
+              method: "PATCH",
+
+              body:
+                JSON.stringify(
+                  eventPayloadFromForm(
+                    event.currentTarget
+                  )
                 ),
+            }
+          );
 
-              primary_color:
-                form.get(
-                  "primary_color"
-                ),
+          closeModal(wrap);
 
-              accent_color:
-                form.get(
-                  "accent_color"
-                ),
+          toast(
+            "Evento atualizado."
+          );
 
-              extra_fields: {
-                adults_children:
-                  form.has(
-                    "adults_children"
-                  ),
+          renderAdminEvent(
+            eventData.id
+          );
+        } catch (error) {
+          toast(
+            error.message,
+            true
+          );
 
-                companions:
-                  form.has(
-                    "companions"
-                  ),
-
-                phone:
-                  form.has(
-                    "phone"
-                  ),
-
-                dietary:
-                  form.has(
-                    "dietary"
-                  ),
-
-                notes:
-                  form.has(
-                    "notes"
-                  ),
-              },
-            }),
-          }
-        );
-
-        wrap.remove();
-
-        toast(
-          "Evento atualizado."
-        );
-
-        await renderAdminEvent(
-          eventData.id
-        );
-      } catch (error) {
-        toast(
-          error.message,
-          true
-        );
-
-        button.disabled = false;
-      }
-    };
+          button.disabled = false;
+        }
+      };
 }
 
 // =========================================================
-// PAINEL DO EVENTO
+// PAINEL ADMIN DO EVENTO
 // =========================================================
 
 async function renderAdminEvent(id) {
@@ -1262,16 +1297,31 @@ async function renderAdminEvent(id) {
 
       <section
         class="client-head"
-        style="--brand:${esc(
-          event.primary_color
-        )}"
+        style="
+          background:
+            linear-gradient(
+              135deg,
+              ${esc(
+                event.primary_color
+              )},
+              ${esc(
+                event.accent_color
+              )}
+            );
+        "
       >
 
         <div
           class="meta"
-          style="color:#fff;opacity:.8"
+          style="
+            color:#fff;
+            opacity:.82
+          "
         >
-          ${fmtDate(event.event_date)}
+
+          ${fmtDate(
+            event.event_date
+          )}
 
           ${
             event.event_time
@@ -1280,6 +1330,7 @@ async function renderAdminEvent(id) {
                 )}`
               : ""
           }
+
         </div>
 
         <h1>
@@ -1289,7 +1340,8 @@ async function renderAdminEvent(id) {
         <p>
 
           ${
-            event.rsvp_mode === "list"
+            event.rsvp_mode ===
+            "list"
               ? "Lista pré-cadastrada"
               : "Confirmação livre"
           }
@@ -1297,106 +1349,198 @@ async function renderAdminEvent(id) {
           •
 
           ${
-            event.status === "active"
-              ? "Ativo"
-              : "Inativo"
+            event.archived_at
+              ? "Arquivado"
+              : event.accepting_rsvp
+                ? "Recebendo confirmações"
+                : "Confirmações fechadas"
           }
 
         </p>
+
+        ${
+          event.closed_reason
+            ? `
+              <p
+                style="
+                  margin-top:8px;
+                  opacity:.88
+                "
+              >
+                ${esc(
+                  event.closed_reason
+                )}
+              </p>
+            `
+            : ""
+        }
 
       </section>
 
       ${summaryHtml(summary)}
 
-      <div
-        class="grid"
+      <section
+        class="card"
         style="margin-top:18px"
       >
 
-        <section
-          class="card"
-          style="grid-column:span 12"
-        >
+        <div class="section-title">
 
-          <div class="section-title">
+          <h3>
+            Links do evento
+          </h3>
 
-            <h3>
-              Links
-            </h3>
+        </div>
 
+        <div class="field">
+
+          <label>
+            Confirmação pública
+          </label>
+
+          <div
+            class="codebox"
+            id="publicUrl"
+          >
+            ${esc(
+              info.public_url
+            )}
           </div>
 
-          <div class="field">
+        </div>
 
-            <label>
-              Convidados
-            </label>
+        <div class="field">
 
-            <div
-              class="codebox"
-              id="publicUrl"
-            >
-              ${esc(
-                location.origin +
-                  "/e/" +
-                  event.slug
-              )}
-            </div>
+          <label>
+            Painel da cliente
+          </label>
 
+          <div
+            class="codebox"
+            id="clientUrl"
+          >
+            ${esc(
+              info.client_url ||
+                "Link não disponível."
+            )}
           </div>
 
-          <div class="field">
+        </div>
 
-            <label>
-              Cliente
-            </label>
+        <div class="actions">
 
-            <div
-              class="codebox"
-              id="clientUrl"
-            >
-              ${esc(
-                info.client_url ||
-                  "Link não disponível."
-              )}
-            </div>
+          <button
+            class="btn secondary small"
+            id="copyPublic"
+          >
+            Copiar confirmação
+          </button>
 
-          </div>
+          <button
+            class="btn secondary small"
+            id="copyClient"
+          >
+            Copiar cliente
+          </button>
 
-          <div class="actions">
+          <button
+            class="btn secondary small"
+            id="openPublic"
+          >
+            Abrir confirmação
+          </button>
 
-            <button
-              class="btn secondary small"
-              id="copyPublic"
-            >
-              Copiar confirmação
-            </button>
+          <button
+            class="btn danger small"
+            id="resetClient"
+          >
+            Trocar link da cliente
+          </button>
 
-            <button
-              class="btn secondary small"
-              id="copyClient"
-            >
-              Copiar cliente
-            </button>
+        </div>
 
-            <button
-              class="btn danger small"
-              id="resetClient"
-            >
-              Trocar link da cliente
-            </button>
+      </section>
 
-          </div>
+      <section
+        class="card"
+        style="margin-top:18px"
+      >
 
-        </section>
+        <div class="section-title">
 
-      </div>
+          <h3>
+            Controle do evento
+          </h3>
+
+        </div>
+
+        <div class="actions">
+
+          ${
+            !event.archived_at
+              ? `
+                <button
+                  class="btn secondary"
+                  id="toggleStatus"
+                >
+
+                  ${
+                    event.status ===
+                    "active"
+                      ? "Pausar confirmações"
+                      : "Reativar confirmações"
+                  }
+
+                </button>
+
+                <button
+                  class="btn danger"
+                  id="archiveEvent"
+                >
+                  Arquivar evento
+                </button>
+              `
+              : `
+                <button
+                  class="btn"
+                  id="unarchiveEvent"
+                >
+                  Restaurar evento
+                </button>
+              `
+          }
+
+          <button
+            class="btn secondary"
+            id="history"
+          >
+            Histórico
+          </button>
+
+          <button
+            class="btn secondary"
+            id="trash"
+          >
+            Lixeira
+          </button>
+
+        </div>
+
+      </section>
 
       <div class="section-title">
 
-        <h2>
-          Convidados
-        </h2>
+        <div>
+
+          <h2>
+            Convidados
+          </h2>
+
+          <span class="meta">
+            Busque também pelo nome de qualquer adulto ou criança.
+          </span>
+
+        </div>
 
         <div class="actions">
 
@@ -1423,13 +1567,15 @@ async function renderAdminEvent(id) {
         <input
           class="search"
           id="search"
-          placeholder="Buscar convidado"
+          placeholder="Buscar nome..."
         >
 
         <select
           id="filter"
           class="search"
-          style="flex:0 0 180px"
+          style="
+            flex:0 0 190px
+          "
         >
 
           <option value="">
@@ -1466,22 +1612,21 @@ async function renderAdminEvent(id) {
 
   document
     .querySelector("#back")
-    .onclick =
-      renderAdminDashboard;
+    .onclick = () =>
+      renderAdminDashboard();
 
   document
     .querySelector("#editEvent")
-    .onclick = () => {
-      editEventModal(event);
-    };
+    .onclick = () =>
+      editEventModal(
+        event
+      );
 
   document
     .querySelector("#copyPublic")
     .onclick = () =>
       copy(
-        location.origin +
-          "/e/" +
-          event.slug
+        info.public_url
       );
 
   document
@@ -1492,12 +1637,22 @@ async function renderAdminEvent(id) {
       );
 
   document
+    .querySelector("#openPublic")
+    .onclick = () => {
+      window.open(
+        info.public_url,
+        "_blank",
+        "noopener"
+      );
+    };
+
+  document
     .querySelector("#resetClient")
     .onclick =
       async () => {
         if (
           !confirm(
-            "O link atual da cliente deixará de funcionar. Continuar?"
+            "O link atual da cliente deixará de funcionar. Deseja continuar?"
           )
         ) {
           return;
@@ -1521,7 +1676,7 @@ async function renderAdminEvent(id) {
               data.client_url;
 
           toast(
-            "Novo link gerado."
+            "Novo link da cliente gerado."
           );
         } catch (error) {
           toast(
@@ -1530,6 +1685,130 @@ async function renderAdminEvent(id) {
           );
         }
       };
+
+  const toggleStatus =
+    document.querySelector(
+      "#toggleStatus"
+    );
+
+  if (toggleStatus) {
+    toggleStatus.onclick =
+      async () => {
+        const newStatus =
+          event.status ===
+          "active"
+            ? "inactive"
+            : "active";
+
+        try {
+          await api(
+            `/api/admin/events/${id}/status`,
+            {
+              method: "POST",
+
+              body:
+                JSON.stringify({
+                  status:
+                    newStatus,
+                }),
+            }
+          );
+
+          toast(
+            newStatus === "active"
+              ? "Confirmações reativadas."
+              : "Confirmações pausadas."
+          );
+
+          renderAdminEvent(id);
+        } catch (error) {
+          toast(
+            error.message,
+            true
+          );
+        }
+      };
+  }
+
+  const archiveButton =
+    document.querySelector(
+      "#archiveEvent"
+    );
+
+  if (archiveButton) {
+    archiveButton.onclick =
+      async () => {
+        if (
+          !confirm(
+            "Arquivar este evento? O link público deixará de receber confirmações, mas os dados serão preservados."
+          )
+        ) {
+          return;
+        }
+
+        try {
+          await api(
+            `/api/admin/events/${id}/archive`,
+            {
+              method: "POST",
+              body: "{}",
+            }
+          );
+
+          toast(
+            "Evento arquivado."
+          );
+
+          renderAdminDashboard();
+        } catch (error) {
+          toast(
+            error.message,
+            true
+          );
+        }
+      };
+  }
+
+  const unarchiveButton =
+    document.querySelector(
+      "#unarchiveEvent"
+    );
+
+  if (unarchiveButton) {
+    unarchiveButton.onclick =
+      async () => {
+        try {
+          await api(
+            `/api/admin/events/${id}/unarchive`,
+            {
+              method: "POST",
+              body: "{}",
+            }
+          );
+
+          toast(
+            "Evento restaurado."
+          );
+
+          renderAdminEvent(id);
+        } catch (error) {
+          toast(
+            error.message,
+            true
+          );
+        }
+      };
+  }
+
+  document
+    .querySelector("#history")
+    .onclick = () =>
+      historyModal(id);
+
+  document
+    .querySelector("#trash")
+    .onclick = () =>
+      trashModal(id);
 
   document
     .querySelector("#export")
@@ -1544,6 +1823,8 @@ async function renderAdminEvent(id) {
       guestModal({
         eventId: id,
         role: "admin",
+        maxPeople:
+          event.max_people_per_rsvp,
       });
 
   let timer;
@@ -1583,7 +1864,9 @@ async function renderAdminEvent(id) {
 
       bindGuestActions(
         id,
-        "admin"
+        "admin",
+        null,
+        event.max_people_per_rsvp
       );
     };
 
@@ -1606,7 +1889,9 @@ async function renderAdminEvent(id) {
 
   bindGuestActions(
     id,
-    "admin"
+    "admin",
+    null,
+    event.max_people_per_rsvp
   );
 }
 
@@ -1617,35 +1902,14 @@ function summaryHtml(summary) {
       <div class="stat good">
 
         <strong>
-          ${summary.yes_responses}
+          ${
+            summary.people_confirmed ||
+            0
+          }
         </strong>
 
         <span>
-          Confirmações positivas
-        </span>
-
-      </div>
-
-      <div class="stat bad">
-
-        <strong>
-          ${summary.no_responses}
-        </strong>
-
-        <span>
-          Não irão
-        </span>
-
-      </div>
-
-      <div class="stat pending">
-
-        <strong>
-          ${summary.pending_responses}
-        </strong>
-
-        <span>
-          Pendentes
+          pessoas
         </span>
 
       </div>
@@ -1653,11 +1917,44 @@ function summaryHtml(summary) {
       <div class="stat">
 
         <strong>
-          ${summary.people_confirmed}
+          ${
+            summary.adults_confirmed ||
+            0
+          }
         </strong>
 
         <span>
-          Pessoas confirmadas
+          adultos
+        </span>
+
+      </div>
+
+      <div class="stat">
+
+        <strong>
+          ${
+            summary.children_confirmed ||
+            0
+          }
+        </strong>
+
+        <span>
+          crianças
+        </span>
+
+      </div>
+
+      <div class="stat bad">
+
+        <strong>
+          ${
+            summary.no_responses ||
+            0
+          }
+        </strong>
+
+        <span>
+          não irão
         </span>
 
       </div>
@@ -1667,7 +1964,227 @@ function summaryHtml(summary) {
 }
 
 // =========================================================
-// TABELA CONVIDADOS
+// HISTÓRICO
+// =========================================================
+
+async function historyModal(
+  eventId
+) {
+  try {
+    const data =
+      await api(
+        `/api/admin/events/${eventId}/audit?limit=200`
+      );
+
+    const content =
+      data.logs.length
+        ? `
+          <div class="history-list">
+
+            ${data.logs
+              .map(
+                (log) => `
+              <div
+                class="card"
+                style="
+                  box-shadow:none;
+                  margin-bottom:10px;
+                  padding:14px;
+                "
+              >
+
+                <strong>
+                  ${esc(
+                    actionLabel(
+                      log.action
+                    )
+                  )}
+                </strong>
+
+                <div class="subtle">
+                  ${esc(
+                    actorLabel(
+                      log.actor_role
+                    )
+                  )}
+                  •
+                  ${esc(
+                    fmtDateTime(
+                      log.created_at
+                    )
+                  )}
+                </div>
+
+                ${
+                  log.details?.name
+                    ? `
+                      <div
+                        style="
+                          margin-top:6px
+                        "
+                      >
+                        ${esc(
+                          log.details.name
+                        )}
+                      </div>
+                    `
+                    : ""
+                }
+
+              </div>
+            `
+              )
+              .join("")}
+
+          </div>
+        `
+        : `
+          <div class="empty">
+            Ainda não há alterações registradas.
+          </div>
+        `;
+
+    modalShell(
+      "Histórico do evento",
+      content
+    );
+  } catch (error) {
+    toast(
+      error.message,
+      true
+    );
+  }
+}
+
+// =========================================================
+// LIXEIRA
+// =========================================================
+
+async function trashModal(
+  eventId
+) {
+  try {
+    const data =
+      await api(
+        `/api/admin/events/${eventId}/trash`
+      );
+
+    const content =
+      data.guests.length
+        ? `
+          <div>
+
+            ${data.guests
+              .map(
+                (guest) => `
+              <div
+                class="card"
+                style="
+                  box-shadow:none;
+                  margin-bottom:10px;
+                  padding:14px;
+                "
+              >
+
+                <strong>
+                  ${esc(
+                    guest.primary_name
+                  )}
+                </strong>
+
+                <div class="subtle">
+                  Excluído em
+                  ${esc(
+                    fmtDateTime(
+                      guest.deleted_at
+                    )
+                  )}
+                </div>
+
+                <div
+                  class="actions"
+                  style="
+                    margin-top:10px
+                  "
+                >
+
+                  <button
+                    class="btn secondary small"
+                    data-restore="${
+                      guest.id
+                    }"
+                  >
+                    Restaurar
+                  </button>
+
+                </div>
+
+              </div>
+            `
+              )
+              .join("")}
+
+          </div>
+        `
+        : `
+          <div class="empty">
+            A lixeira está vazia.
+          </div>
+        `;
+
+    const wrap =
+      modalShell(
+        "Lixeira de convidados",
+        content,
+        "Exclusões não são definitivas. Você pode restaurar os registros daqui."
+      );
+
+    wrap
+      .querySelectorAll(
+        "[data-restore]"
+      )
+      .forEach((button) => {
+        button.onclick =
+          async () => {
+            try {
+              await api(
+                `/api/admin/events/${eventId}/guests/${button.dataset.restore}/restore`,
+                {
+                  method:
+                    "POST",
+                  body: "{}",
+                }
+              );
+
+              closeModal(
+                wrap
+              );
+
+              toast(
+                "Convidado restaurado."
+              );
+
+              renderAdminEvent(
+                eventId
+              );
+            } catch (error) {
+              toast(
+                error.message,
+                true
+              );
+            }
+          };
+      });
+  } catch (error) {
+    toast(
+      error.message,
+      true
+    );
+  }
+}
+
+// =========================================================
+// TABELA DE CONVIDADOS
 // =========================================================
 
 function guestTable(
@@ -1692,11 +2209,7 @@ function guestTable(
           <tr>
 
             <th>
-              Nome
-            </th>
-
-            <th>
-              Status
+              Confirmação
             </th>
 
             <th>
@@ -1704,11 +2217,15 @@ function guestTable(
             </th>
 
             <th>
-              Telefone
+              Status
             </th>
 
             <th>
-              Origem
+              Contato
+            </th>
+
+            <th>
+              Mensagem
             </th>
 
             ${
@@ -1723,124 +2240,170 @@ function guestTable(
 
         <tbody>
 
-          ${
-            guests
-              .map(
-                (guest) => `
-              <tr>
+          ${guests
+            .map(
+              (guest) => `
+            <tr>
 
-                <td>
+              <td>
 
-                  <strong>
-                    ${esc(
-                      guest.primary_name
-                    )}
-                  </strong>
-
-                  ${
-                    guest.companions
-                      .length
-                      ? `
-                        <div class="subtle">
-                          + ${esc(
-                            guest.companions.join(
-                              ", "
-                            )
-                          )}
-                        </div>
-                      `
-                      : ""
-                  }
-
-                </td>
-
-                <td>
-
-                  <span
-                    class="status ${guest.response_status}"
-                  >
-
-                    ${
-                      guest.response_status ===
-                      "yes"
-                        ? "Confirmado"
-                        : guest.response_status ===
-                            "no"
-                          ? "Não irá"
-                          : "Pendente"
-                    }
-
-                  </span>
-
-                </td>
-
-                <td>
-
-                  ${
-                    guest.response_status ===
-                    "no"
-                      ? 0
-                      : guest.adults +
-                        guest.children
-                  }
-
-                </td>
-
-                <td>
+                <strong>
                   ${esc(
-                    guest.phone ||
-                      "—"
+                    guest.primary_name
                   )}
-                </td>
+                </strong>
 
-                <td>
+                <div class="subtle">
+
                   ${esc(
-                    guest.source ||
-                      "—"
+                    sourceLabel(
+                      guest.source
+                    )
                   )}
-                </td>
+
+                </div>
+
+              </td>
+
+              <td>
 
                 ${
-                  editable
-                    ? `
-                      <td>
+                  guest.members.length
+                    ? guest.members
+                        .map(
+                          (member) => `
+                      <div
+                        class="member-line"
+                      >
 
-                        <div class="actions">
+                        <span>
+                          ${
+                            member.person_type ===
+                            "child"
+                              ? "🧒"
+                              : "👤"
+                          }
+                        </span>
 
-                          <button
-                            class="btn secondary small"
-                            data-edit="${guest.id}"
-                            data-guest='${esc(
-                              JSON.stringify(
-                                guest
-                              )
-                            )}'
-                          >
-                            Editar
-                          </button>
+                        <span>
+                          ${esc(
+                            member.name
+                          )}
+                        </span>
 
-                          <button
-                            class="btn danger small"
-                            data-delete="${guest.id}"
-                            data-name="${esc(
-                              guest.primary_name
-                            )}"
-                          >
-                            Excluir
-                          </button>
+                        <small>
+                          ${
+                            member.person_type ===
+                            "child"
+                              ? "criança"
+                              : "adulto"
+                          }
+                        </small>
 
-                        </div>
-
-                      </td>
+                      </div>
                     `
-                    : ""
+                        )
+                        .join("")
+                    : `
+                      <span class="subtle">
+                        Nenhuma pessoa confirmada
+                      </span>
+                    `
                 }
 
-              </tr>
-            `
-              )
-              .join("")
-          }
+              </td>
+
+              <td>
+
+                <span
+                  class="status ${
+                    guest.response_status
+                  }"
+                >
+                  ${esc(
+                    statusLabel(
+                      guest.response_status
+                    )
+                  )}
+                </span>
+
+              </td>
+
+              <td>
+
+                ${esc(
+                  guest.phone ||
+                    "—"
+                )}
+
+              </td>
+
+              <td>
+
+                ${
+                  guest.love_message
+                    ? `
+                      <div
+                        class="love-note"
+                        title="${esc(
+                          guest.love_message
+                        )}"
+                      >
+                        💌
+                        ${esc(
+                          guest.love_message
+                        )}
+                      </div>
+                    `
+                    : "—"
+                }
+
+              </td>
+
+              ${
+                editable
+                  ? `
+                    <td>
+
+                      <div class="actions">
+
+                        <button
+                          class="btn secondary small"
+                          data-edit="${
+                            guest.id
+                          }"
+                          data-guest='${esc(
+                            JSON.stringify(
+                              guest
+                            )
+                          )}'
+                        >
+                          Editar
+                        </button>
+
+                        <button
+                          class="btn danger small"
+                          data-delete="${
+                            guest.id
+                          }"
+                          data-name="${esc(
+                            guest.primary_name
+                          )}"
+                        >
+                          Excluir
+                        </button>
+
+                      </div>
+
+                    </td>
+                  `
+                  : ""
+              }
+
+            </tr>
+          `
+            )
+            .join("")}
 
         </tbody>
 
@@ -1853,7 +2416,8 @@ function guestTable(
 function bindGuestActions(
   eventId,
   role,
-  token
+  token = null,
+  maxPeople = null
 ) {
   document
     .querySelectorAll(
@@ -1865,6 +2429,7 @@ function bindGuestActions(
           eventId,
           role,
           token,
+          maxPeople,
 
           guest:
             JSON.parse(
@@ -1931,6 +2496,316 @@ function bindGuestActions(
 }
 
 // =========================================================
+// EDITOR DE PESSOAS
+// =========================================================
+
+function membersEditorHtml(
+  members = [],
+  maxPeople = null
+) {
+  return `
+    <div class="members-editor">
+
+      <div
+        class="section-title"
+        style="
+          margin-top:0
+        "
+      >
+
+        <div>
+
+          <h3>
+            Pessoas
+          </h3>
+
+          <span class="subtle">
+
+            ${
+              maxPeople
+                ? `Máximo de ${maxPeople} pessoa(s).`
+                : "Informe o nome de cada pessoa."
+            }
+
+          </span>
+
+        </div>
+
+      </div>
+
+      <div id="membersList"></div>
+
+      <div class="actions">
+
+        <button
+          type="button"
+          class="btn secondary small"
+          id="addAdult"
+        >
+          + Adulto
+        </button>
+
+        <button
+          type="button"
+          class="btn secondary small"
+          id="addChild"
+        >
+          + Criança
+        </button>
+
+      </div>
+
+    </div>
+  `;
+}
+
+function createMemberRow(
+  member = {
+    name: "",
+    person_type: "adult",
+  }
+) {
+  const row =
+    document.createElement(
+      "div"
+    );
+
+  row.className =
+    "member-editor-row";
+
+  row.innerHTML = `
+    <div class="member-type-badge">
+
+      ${
+        member.person_type ===
+        "child"
+          ? "🧒 Criança"
+          : "👤 Adulto"
+      }
+
+    </div>
+
+    <input
+      type="text"
+      class="member-name"
+      placeholder="${
+        member.person_type ===
+        "child"
+          ? "Nome da criança"
+          : "Nome do adulto"
+      }"
+      value="${esc(
+        member.name || ""
+      )}"
+      data-person-type="${
+        member.person_type ===
+        "child"
+          ? "child"
+          : "adult"
+      }"
+    >
+
+    <button
+      type="button"
+      class="btn danger small remove-member"
+      aria-label="Remover pessoa"
+    >
+      ×
+    </button>
+  `;
+
+  row
+    .querySelector(
+      ".remove-member"
+    )
+    .onclick = () => {
+      row.remove();
+    };
+
+  return row;
+}
+
+function setupMembersEditor({
+  root,
+  initialMembers = [],
+  maxPeople = null,
+  primaryInput = null,
+  startWithPrimary = false,
+}) {
+  const list =
+    root.querySelector(
+      "#membersList"
+    );
+
+  let touchedFirst =
+    false;
+
+  function currentCount() {
+    return list.querySelectorAll(
+      ".member-editor-row"
+    ).length;
+  }
+
+  function canAdd() {
+    if (
+      maxPeople &&
+      currentCount() >=
+        Number(maxPeople)
+    ) {
+      toast(
+        `O limite desta confirmação é de ${maxPeople} pessoa(s).`,
+        true
+      );
+
+      return false;
+    }
+
+    return true;
+  }
+
+  function add(
+    personType,
+    name = ""
+  ) {
+    if (!canAdd()) {
+      return;
+    }
+
+    const row =
+      createMemberRow({
+        name,
+        person_type:
+          personType,
+      });
+
+    const input =
+      row.querySelector(
+        ".member-name"
+      );
+
+    input.addEventListener(
+      "input",
+      () => {
+        if (
+          list.firstElementChild ===
+          row
+        ) {
+          touchedFirst = true;
+        }
+      }
+    );
+
+    list.append(row);
+
+    return row;
+  }
+
+  if (initialMembers.length) {
+    initialMembers.forEach(
+      (member) => {
+        add(
+          member.person_type,
+          member.name
+        );
+      }
+    );
+  } else if (startWithPrimary) {
+    add(
+      "adult",
+      primaryInput?.value || ""
+    );
+  }
+
+  root
+    .querySelector(
+      "#addAdult"
+    )
+    .onclick = () => {
+      add("adult");
+    };
+
+  root
+    .querySelector(
+      "#addChild"
+    )
+    .onclick = () => {
+      add("child");
+    };
+
+  if (primaryInput) {
+    primaryInput.addEventListener(
+      "input",
+      () => {
+        const first =
+          list.querySelector(
+            ".member-editor-row"
+          );
+
+        if (!first) {
+          return;
+        }
+
+        const firstInput =
+          first.querySelector(
+            ".member-name"
+          );
+
+        if (
+          !touchedFirst ||
+          !firstInput.value.trim()
+        ) {
+          firstInput.value =
+            primaryInput.value;
+        }
+      }
+    );
+  }
+
+  return {
+    getMembers() {
+      return [
+        ...list.querySelectorAll(
+          ".member-name"
+        ),
+      ]
+        .map((input) => ({
+          name:
+            input.value.trim(),
+
+          person_type:
+            input.dataset
+              .personType ===
+            "child"
+              ? "child"
+              : "adult",
+        }))
+        .filter(
+          (member) =>
+            member.name
+        );
+    },
+
+    clear() {
+      list.innerHTML = "";
+    },
+
+    ensurePrimary() {
+      if (
+        !list.querySelector(
+          ".member-editor-row"
+        )
+      ) {
+        add(
+          "adult",
+          primaryInput?.value ||
+            ""
+        );
+      }
+    },
+  };
+}
+
+// =========================================================
 // MODAL CONVIDADO
 // =========================================================
 
@@ -1938,351 +2813,381 @@ function guestModal({
   eventId,
   role,
   token,
+  maxPeople,
   guest = null,
 }) {
-  const wrap =
-    document.createElement("div");
+  const content = `
+    <form id="guestForm">
 
-  wrap.className =
-    "modal-backdrop";
+      <div class="field">
 
-  wrap.innerHTML = `
-    <div class="modal">
+        <label>
+          Responsável pela confirmação
+        </label>
+
+        <input
+          name="primary_name"
+          id="guestPrimaryName"
+          required
+          value="${esc(
+            guest?.primary_name ||
+              ""
+          )}"
+        >
+
+      </div>
+
+      <div class="field">
+
+        <label>
+          Status
+        </label>
+
+        <select
+          name="response_status"
+          id="guestStatus"
+        >
+
+          <option
+            value="pending"
+            ${
+              guest?.response_status ===
+              "pending"
+                ? "selected"
+                : ""
+            }
+          >
+            Pendente
+          </option>
+
+          <option
+            value="yes"
+            ${
+              guest?.response_status ===
+              "yes"
+                ? "selected"
+                : ""
+            }
+          >
+            Confirmado
+          </option>
+
+          <option
+            value="no"
+            ${
+              guest?.response_status ===
+              "no"
+                ? "selected"
+                : ""
+            }
+          >
+            Não irá
+          </option>
+
+        </select>
+
+      </div>
+
+      <div id="guestMembersSection">
+
+        ${membersEditorHtml(
+          guest?.members || [],
+          maxPeople
+        )}
+
+      </div>
+
+      <div class="field">
+
+        <label>
+          Telefone
+        </label>
+
+        <input
+          name="phone"
+          value="${esc(
+            guest?.phone || ""
+          )}"
+        >
+
+      </div>
+
+      <div class="field">
+
+        <label>
+          Restrição alimentar
+        </label>
+
+        <input
+          name="dietary"
+          value="${esc(
+            guest?.dietary || ""
+          )}"
+        >
+
+      </div>
+
+      <div class="field">
+
+        <label>
+          Observações
+        </label>
+
+        <textarea
+          name="notes"
+        >${esc(
+          guest?.notes || ""
+        )}</textarea>
+
+      </div>
+
+      <div class="field">
+
+        <label>
+          Mensagem carinhosa 💌
+        </label>
+
+        <textarea
+          name="love_message"
+          rows="3"
+        >${esc(
+          guest?.love_message ||
+            ""
+        )}</textarea>
+
+      </div>
 
       <button
-        class="close"
-        type="button"
+        class="btn"
+        type="submit"
       >
-        ×
+        Salvar
       </button>
 
-      <h2>
-
-        ${
-          guest
-            ? "Editar"
-            : "Adicionar"
-        }
-
-        convidado
-
-      </h2>
-
-      <form>
-
-        <div class="field">
-
-          <label>
-            Nome
-          </label>
-
-          <input
-            name="primary_name"
-            required
-            value="${esc(
-              guest?.primary_name ||
-                ""
-            )}"
-          >
-
-        </div>
-
-        <div class="row">
-
-          <div class="field">
-
-            <label>
-              Status
-            </label>
-
-            <select name="response_status">
-
-              <option
-                value="pending"
-                ${
-                  guest?.response_status ===
-                  "pending"
-                    ? "selected"
-                    : ""
-                }
-              >
-                Pendente
-              </option>
-
-              <option
-                value="yes"
-                ${
-                  guest?.response_status ===
-                  "yes"
-                    ? "selected"
-                    : ""
-                }
-              >
-                Confirmado
-              </option>
-
-              <option
-                value="no"
-                ${
-                  guest?.response_status ===
-                  "no"
-                    ? "selected"
-                    : ""
-                }
-              >
-                Não irá
-              </option>
-
-            </select>
-
-          </div>
-
-          <div class="field">
-
-            <label>
-              Telefone
-            </label>
-
-            <input
-              name="phone"
-              value="${esc(
-                guest?.phone || ""
-              )}"
-            >
-
-          </div>
-
-        </div>
-
-        <div class="row">
-
-          <div class="field">
-
-            <label>
-              Adultos
-            </label>
-
-            <input
-              type="number"
-              min="0"
-              name="adults"
-              value="${
-                guest?.adults ??
-                1
-              }"
-            >
-
-          </div>
-
-          <div class="field">
-
-            <label>
-              Crianças
-            </label>
-
-            <input
-              type="number"
-              min="0"
-              name="children"
-              value="${
-                guest?.children ??
-                0
-              }"
-            >
-
-          </div>
-
-        </div>
-
-        <div class="field">
-
-          <label>
-            Acompanhantes, um por linha
-          </label>
-
-          <textarea
-            name="companions"
-            rows="3"
-          >${esc(
-            (
-              guest?.companions ||
-              []
-            ).join("\n")
-          )}</textarea>
-
-        </div>
-
-        <div class="field">
-
-          <label>
-            Restrição alimentar
-          </label>
-
-          <input
-            name="dietary"
-            value="${esc(
-              guest?.dietary ||
-                ""
-            )}"
-          >
-
-        </div>
-
-        <div class="field">
-
-          <label>
-            Observações
-          </label>
-
-          <textarea
-            name="notes"
-          >${esc(
-            guest?.notes ||
-              ""
-          )}</textarea>
-
-        </div>
-
-        <button
-          class="btn"
-          type="submit"
-        >
-          Salvar
-        </button>
-
-      </form>
-
-    </div>
+    </form>
   `;
 
-  document.body.append(wrap);
+  const wrap =
+    modalShell(
+      guest
+        ? "Editar confirmação"
+        : "Adicionar confirmação",
+      content
+    );
 
-  wrap
-    .querySelector(".close")
-    .onclick = () => {
-      wrap.remove();
-    };
+  const form =
+    wrap.querySelector(
+      "#guestForm"
+    );
 
-  wrap.onclick = (event) => {
-    if (event.target === wrap) {
-      wrap.remove();
+  const primaryInput =
+    wrap.querySelector(
+      "#guestPrimaryName"
+    );
+
+  const statusInput =
+    wrap.querySelector(
+      "#guestStatus"
+    );
+
+  const membersSection =
+    wrap.querySelector(
+      "#guestMembersSection"
+    );
+
+  const editor =
+    setupMembersEditor({
+      root: membersSection,
+
+      initialMembers:
+        guest?.members || [],
+
+      maxPeople,
+
+      primaryInput,
+
+      startWithPrimary:
+        !guest,
+    });
+
+  function syncStatus() {
+    const showing =
+      statusInput.value !==
+      "no";
+
+    membersSection.style.display =
+      showing
+        ? ""
+        : "none";
+
+    if (
+      showing &&
+      statusInput.value ===
+        "yes"
+    ) {
+      editor.ensurePrimary();
     }
-  };
+  }
 
-  wrap
-    .querySelector("form")
-    .onsubmit =
-      async (event) => {
-        event.preventDefault();
+  statusInput.onchange =
+    syncStatus;
 
-        const form =
-          new FormData(
-            event.currentTarget
+  syncStatus();
+
+  form.onsubmit =
+    async (event) => {
+      event.preventDefault();
+
+      const data =
+        new FormData(form);
+
+      const status =
+        data.get(
+          "response_status"
+        );
+
+      const members =
+        status === "no"
+          ? []
+          : editor.getMembers();
+
+      if (
+        status === "yes" &&
+        members.length === 0
+      ) {
+        toast(
+          "Informe pelo menos uma pessoa confirmada.",
+          true
+        );
+
+        return;
+      }
+
+      if (
+        maxPeople &&
+        members.length >
+          Number(maxPeople)
+      ) {
+        toast(
+          `O limite é de ${maxPeople} pessoa(s).`,
+          true
+        );
+
+        return;
+      }
+
+      const base =
+        role === "client"
+          ? `/api/client/${encodeURIComponent(
+              token
+            )}`
+          : `/api/admin/events/${eventId}`;
+
+      const url =
+        guest
+          ? `${base}/guests/${guest.id}`
+          : `${base}/guests`;
+
+      const button =
+        event.submitter;
+
+      button.disabled = true;
+
+      try {
+        const response =
+          await api(
+            url,
+            {
+              method:
+                guest
+                  ? "PATCH"
+                  : "POST",
+
+              body:
+                JSON.stringify({
+                  primary_name:
+                    data.get(
+                      "primary_name"
+                    ),
+
+                  response_status:
+                    status,
+
+                  members,
+
+                  phone:
+                    data.get(
+                      "phone"
+                    ),
+
+                  dietary:
+                    data.get(
+                      "dietary"
+                    ),
+
+                  notes:
+                    data.get(
+                      "notes"
+                    ),
+
+                  love_message:
+                    data.get(
+                      "love_message"
+                    ),
+                }),
+            }
           );
 
-        const button =
-          event.submitter;
+        closeModal(wrap);
 
-        button.disabled = true;
+        if (
+          response
+            .duplicate_matches
+            ?.length
+        ) {
+          const names = [
+            ...new Set(
+              response
+                .duplicate_matches
+                .map(
+                  (item) =>
+                    item.name
+                )
+            ),
+          ].join(", ");
 
-        const base =
-          role === "client"
-            ? `/api/client/${encodeURIComponent(
-                token
-              )}`
-            : `/api/admin/events/${eventId}`;
-
-        const url =
-          guest
-            ? `${base}/guests/${guest.id}`
-            : `${base}/guests`;
-
-        try {
-          await api(url, {
-            method:
-              guest
-                ? "PATCH"
-                : "POST",
-
-            body:
-              JSON.stringify({
-                primary_name:
-                  form.get(
-                    "primary_name"
-                  ),
-
-                response_status:
-                  form.get(
-                    "response_status"
-                  ),
-
-                phone:
-                  form.get(
-                    "phone"
-                  ),
-
-                adults:
-                  form.get(
-                    "adults"
-                  ),
-
-                children:
-                  form.get(
-                    "children"
-                  ),
-
-                companions:
-                  String(
-                    form.get(
-                      "companions"
-                    ) || ""
-                  )
-                    .split("\n")
-                    .map((item) =>
-                      item.trim()
-                    )
-                    .filter(Boolean),
-
-                dietary:
-                  form.get(
-                    "dietary"
-                  ),
-
-                notes:
-                  form.get(
-                    "notes"
-                  ),
-              }),
-          });
-
-          wrap.remove();
-
+          toast(
+            `Salvo. Atenção: possível duplicidade em ${names}.`
+          );
+        } else {
           toast(
             "Salvo."
           );
-
-          if (
-            role === "client"
-          ) {
-            clientApp(token);
-          } else {
-            renderAdminEvent(
-              eventId
-            );
-          }
-        } catch (error) {
-          toast(
-            error.message,
-            true
-          );
-
-          button.disabled = false;
         }
-      };
+
+        if (
+          role === "client"
+        ) {
+          clientApp(token);
+        } else {
+          renderAdminEvent(
+            eventId
+          );
+        }
+      } catch (error) {
+        toast(
+          error.message,
+          true
+        );
+
+        button.disabled =
+          false;
+      }
+    };
 }
 
 // =========================================================
-// PAINEL CLIENTE
+// ÁREA DO CLIENTE
 // =========================================================
 
 async function clientApp(token) {
@@ -2327,11 +3232,28 @@ async function clientApp(token) {
 
         ${topbar()}
 
-        <section class="client-head">
+        <section
+          class="client-head"
+          style="
+            background:
+              linear-gradient(
+                135deg,
+                ${esc(
+                  event.primary_color
+                )},
+                ${esc(
+                  event.accent_color
+                )}
+              );
+          "
+        >
 
           <div
             class="meta"
-            style="color:#fff;opacity:.8"
+            style="
+              color:#fff;
+              opacity:.82
+            "
           >
             PAINEL DO CLIENTE
           </div>
@@ -2362,9 +3284,17 @@ async function clientApp(token) {
 
         <div class="section-title">
 
-          <h2>
-            Lista de convidados
-          </h2>
+          <div>
+
+            <h2>
+              Lista de convidados
+            </h2>
+
+            <span class="meta">
+              Você pode adicionar, editar e excluir registros deste evento.
+            </span>
+
+          </div>
 
           <div class="actions">
 
@@ -2391,13 +3321,15 @@ async function clientApp(token) {
           <input
             class="search"
             id="search"
-            placeholder="Buscar convidado"
+            placeholder="Buscar convidado..."
           >
 
           <select
             id="filter"
             class="search"
-            style="flex:0 0 180px"
+            style="
+              flex:0 0 190px
+            "
           >
 
             <option value="">
@@ -2429,13 +3361,6 @@ async function clientApp(token) {
 
         </div>
 
-        <p
-          class="subtle"
-          style="margin-top:18px"
-        >
-          Alterações feitas aqui ficam restritas a este evento.
-        </p>
-
       </main>
     `;
 
@@ -2463,6 +3388,9 @@ async function clientApp(token) {
             "client",
 
           token,
+
+          maxPeople:
+            event.max_people_per_rsvp,
         });
 
     let timer;
@@ -2505,7 +3433,8 @@ async function clientApp(token) {
         bindGuestActions(
           event.id,
           "client",
-          token
+          token,
+          event.max_people_per_rsvp
         );
       };
 
@@ -2533,7 +3462,8 @@ async function clientApp(token) {
     bindGuestActions(
       event.id,
       "client",
-      token
+      token,
+      event.max_people_per_rsvp
     );
   } catch (error) {
     app.innerHTML = `
@@ -2590,7 +3520,9 @@ async function publicApp(slug) {
 
     const background =
       event.background_image_url
-        ? `background-image:url('${event.background_image_url.replace(
+        ? `background-image:url('${String(
+            event.background_image_url
+          ).replace(
             /'/g,
             "%27"
           )}')`
@@ -2629,13 +3561,26 @@ async function publicApp(slug) {
           </div>
 
           <p>
-
             ${esc(
               event.welcome_message ||
                 "Confirme sua presença para que tudo seja preparado com carinho."
             )}
-
           </p>
+
+          ${
+            event.rsvp_deadline
+              ? `
+                <div class="chip">
+                  Confirme até
+                  ${esc(
+                    fmtDate(
+                      event.rsvp_deadline
+                    )
+                  )}
+                </div>
+              `
+              : ""
+          }
 
           <div id="publicFlow"></div>
 
@@ -2643,6 +3588,16 @@ async function publicApp(slug) {
 
       </main>
     `;
+
+    if (
+      !event.accepting_rsvp
+    ) {
+      renderClosedRsvp(
+        event
+      );
+
+      return;
+    }
 
     if (
       event.rsvp_mode ===
@@ -2673,8 +3628,43 @@ async function publicApp(slug) {
   }
 }
 
+function renderClosedRsvp(
+  event
+) {
+  const root =
+    document.querySelector(
+      "#publicFlow"
+    );
+
+  root.innerHTML = `
+    <div
+      class="success"
+      style="
+        margin-top:18px
+      "
+    >
+
+      <div class="bubble">
+        ♡
+      </div>
+
+      <h2>
+        Confirmações encerradas
+      </h2>
+
+      <p>
+        ${esc(
+          event.closed_reason ||
+            "O período de confirmação de presença foi encerrado."
+        )}
+      </p>
+
+    </div>
+  `;
+}
+
 // =========================================================
-// BUSCAR CONVIDADO
+// BUSCA EM LISTA CONTROLADA
 // =========================================================
 
 function renderLookup(event) {
@@ -2689,7 +3679,7 @@ function renderLookup(event) {
       <div class="field">
 
         <label>
-          Digite seu nome completo
+          Digite seu nome
         </label>
 
         <input
@@ -2705,7 +3695,7 @@ function renderLookup(event) {
         class="btn"
         type="submit"
       >
-        Encontrar meu convite
+        Encontrar minha confirmação
       </button>
 
     </form>
@@ -2761,7 +3751,7 @@ function renderLookup(event) {
 }
 
 // =========================================================
-// RSVP
+// RSVP PÚBLICO
 // =========================================================
 
 function renderRsvp(
@@ -2774,20 +3764,43 @@ function renderRsvp(
     );
 
   const fields =
-    event.extra_fields ||
-    {};
+    event.extra_fields || {};
 
   root.innerHTML = `
     <form id="rsvp">
 
+      <div
+        style="
+          position:absolute;
+          left:-9999px;
+          width:1px;
+          height:1px;
+          overflow:hidden;
+        "
+        aria-hidden="true"
+      >
+
+        <label>
+          Website
+        </label>
+
+        <input
+          name="website"
+          tabindex="-1"
+          autocomplete="off"
+        >
+
+      </div>
+
       <div class="field">
 
         <label>
-          Nome
+          Seu nome
         </label>
 
         <input
           name="primary_name"
+          id="publicPrimaryName"
           autocomplete="name"
           required
           ${
@@ -2808,7 +3821,13 @@ function renderRsvp(
         <button
           type="button"
           data-choice="yes"
-          class="active"
+          class="${
+            !guest ||
+            guest.response_status !==
+              "no"
+              ? "active"
+              : ""
+          }"
         >
           ✓ Estarei presente
         </button>
@@ -2816,6 +3835,12 @@ function renderRsvp(
         <button
           type="button"
           data-choice="no"
+          class="${
+            guest?.response_status ===
+            "no"
+              ? "active"
+              : ""
+          }"
         >
           Não poderei ir
         </button>
@@ -2825,8 +3850,22 @@ function renderRsvp(
       <input
         type="hidden"
         name="response_status"
-        value="yes"
+        value="${
+          guest?.response_status ===
+          "no"
+            ? "no"
+            : "yes"
+        }"
       >
+
+      <div id="publicMembersSection">
+
+        ${membersEditorHtml(
+          guest?.members || [],
+          event.max_people_per_rsvp
+        )}
+
+      </div>
 
       ${
         fields.phone
@@ -2840,80 +3879,11 @@ function renderRsvp(
               <input
                 name="phone"
                 inputmode="tel"
+                value="${esc(
+                  guest?.phone ||
+                    ""
+                )}"
               >
-
-            </div>
-          `
-          : ""
-      }
-
-      ${
-        fields.adults_children !==
-        false
-          ? `
-            <div class="row">
-
-              <div class="field">
-
-                <label>
-                  Adultos
-                </label>
-
-                <input
-                  type="number"
-                  name="adults"
-                  min="0"
-                  value="${
-                    guest?.adults ??
-                    1
-                  }"
-                >
-
-              </div>
-
-              <div class="field">
-
-                <label>
-                  Crianças
-                </label>
-
-                <input
-                  type="number"
-                  name="children"
-                  min="0"
-                  value="${
-                    guest?.children ??
-                    0
-                  }"
-                >
-
-              </div>
-
-            </div>
-          `
-          : ""
-      }
-
-      ${
-        fields.companions !==
-        false
-          ? `
-            <div class="field">
-
-              <label>
-                Nome dos acompanhantes
-              </label>
-
-              <textarea
-                name="companions"
-                rows="3"
-                placeholder="Um nome por linha"
-              >${esc(
-                (
-                  guest?.companions ||
-                  []
-                ).join("\n")
-              )}</textarea>
 
             </div>
           `
@@ -2963,6 +3933,30 @@ function renderRsvp(
           : ""
       }
 
+      ${
+        fields.love_message !==
+        false
+          ? `
+            <div class="field">
+
+              <label>
+                Deixe uma mensagem carinhosa 💌
+              </label>
+
+              <textarea
+                name="love_message"
+                rows="3"
+                placeholder="Uma mensagem especial para quem está celebrando..."
+              >${esc(
+                guest?.love_message ||
+                  ""
+              )}</textarea>
+
+            </div>
+          `
+          : ""
+      }
+
       <button
         class="btn"
         type="submit"
@@ -2972,6 +3966,58 @@ function renderRsvp(
 
     </form>
   `;
+
+  const form =
+    root.querySelector(
+      "#rsvp"
+    );
+
+  const primaryInput =
+    root.querySelector(
+      "#publicPrimaryName"
+    );
+
+  const membersSection =
+    root.querySelector(
+      "#publicMembersSection"
+    );
+
+  const editor =
+    setupMembersEditor({
+      root:
+        membersSection,
+
+      initialMembers:
+        guest?.members || [],
+
+      maxPeople:
+        event.max_people_per_rsvp,
+
+      primaryInput,
+
+      startWithPrimary:
+        !guest,
+    });
+
+  const statusInput =
+    form.querySelector(
+      '[name="response_status"]'
+    );
+
+  function syncChoice() {
+    const yes =
+      statusInput.value ===
+      "yes";
+
+    membersSection.style.display =
+      yes
+        ? ""
+        : "none";
+
+    if (yes) {
+      editor.ensurePrimary();
+    }
+  }
 
   root
     .querySelectorAll(
@@ -2994,138 +4040,156 @@ function renderRsvp(
           "active"
         );
 
-        root
-          .querySelector(
-            '[name="response_status"]'
-          )
-          .value =
-            button.dataset.choice;
+        statusInput.value =
+          button.dataset.choice;
+
+        syncChoice();
       };
     });
 
-  root
-    .querySelector("form")
-    .onsubmit =
-      async (formEvent) => {
-        formEvent.preventDefault();
+  syncChoice();
 
-        const form =
-          new FormData(
-            formEvent.currentTarget
-          );
+  form.onsubmit =
+    async (formEvent) => {
+      formEvent.preventDefault();
 
-        const button =
-          formEvent.submitter;
+      const data =
+        new FormData(form);
 
-        button.disabled = true;
+      const status =
+        data.get(
+          "response_status"
+        );
 
-        try {
-          await api(
-            `/api/public/events/${encodeURIComponent(
-              event.slug
-            )}/rsvp`,
-            {
-              method:
-                "POST",
+      const members =
+        status === "yes"
+          ? editor.getMembers()
+          : [];
 
-              body:
-                JSON.stringify({
-                  guest_id:
-                    guest?.id ||
-                    null,
+      if (
+        status === "yes" &&
+        members.length === 0
+      ) {
+        toast(
+          "Informe o nome de pelo menos uma pessoa que irá à festa.",
+          true
+        );
 
-                  primary_name:
-                    form.get(
-                      "primary_name"
-                    ),
+        return;
+      }
 
-                  response_status:
-                    form.get(
-                      "response_status"
-                    ),
+      if (
+        event.max_people_per_rsvp &&
+        members.length >
+          Number(
+            event.max_people_per_rsvp
+          )
+      ) {
+        toast(
+          `Esta confirmação permite no máximo ${event.max_people_per_rsvp} pessoa(s).`,
+          true
+        );
 
-                  phone:
-                    form.get(
-                      "phone"
-                    ),
+        return;
+      }
 
-                  adults:
-                    form.get(
-                      "adults"
-                    ) || 1,
+      const button =
+        formEvent.submitter;
 
-                  children:
-                    form.get(
-                      "children"
-                    ) || 0,
+      button.disabled = true;
 
-                  companions:
-                    String(
-                      form.get(
-                        "companions"
-                      ) || ""
-                    )
-                      .split("\n")
-                      .map((item) =>
-                        item.trim()
-                      )
-                      .filter(Boolean),
+      try {
+        await api(
+          `/api/public/events/${encodeURIComponent(
+            event.slug
+          )}/rsvp`,
+          {
+            method:
+              "POST",
 
-                  dietary:
-                    form.get(
-                      "dietary"
-                    ),
+            body:
+              JSON.stringify({
+                website:
+                  data.get(
+                    "website"
+                  ),
 
-                  notes:
-                    form.get(
-                      "notes"
-                    ),
-                }),
-            }
-          );
+                guest_id:
+                  guest?.id ||
+                  null,
 
-          root.innerHTML = `
-            <div class="success">
+                primary_name:
+                  data.get(
+                    "primary_name"
+                  ),
 
-              <div class="bubble">
-                ✓
-              </div>
+                response_status:
+                  status,
 
-              <h2>
+                members,
 
-                ${
-                  form.get(
-                    "response_status"
-                  ) === "yes"
-                    ? "Presença confirmada!"
-                    : "Resposta registrada"
-                }
+                phone:
+                  data.get(
+                    "phone"
+                  ),
 
-              </h2>
+                dietary:
+                  data.get(
+                    "dietary"
+                  ),
 
-              <p>
+                notes:
+                  data.get(
+                    "notes"
+                  ),
 
-                ${
-                  form.get(
-                    "response_status"
-                  ) === "yes"
-                    ? "Que bom ter você com a gente. 💛"
-                    : "Obrigada por avisar."
-                }
+                love_message:
+                  data.get(
+                    "love_message"
+                  ),
+              }),
+          }
+        );
 
-              </p>
+        root.innerHTML = `
+          <div class="success">
 
+            <div class="bubble">
+              ✓
             </div>
-          `;
-        } catch (error) {
-          toast(
-            error.message,
-            true
-          );
 
-          button.disabled = false;
-        }
-      };
+            <h2>
+
+              ${
+                status === "yes"
+                  ? "Presença confirmada!"
+                  : "Resposta registrada"
+              }
+
+            </h2>
+
+            <p>
+
+              ${
+                status === "yes"
+                  ? "Que bom ter você com a gente. 💛"
+                  : "Obrigada por avisar."
+              }
+
+            </p>
+
+          </div>
+        `;
+      } catch (error) {
+        toast(
+          error.message,
+          true
+        );
+
+        button.disabled =
+          false;
+      }
+    };
 }
 
 // =========================================================
