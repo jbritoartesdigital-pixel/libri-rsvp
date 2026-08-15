@@ -11,6 +11,7 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
+
     "run_worker_first": [
       "/api/*"
     ]
@@ -21,6 +22,13 @@
       "binding": "DB",
       "database_name": "libri-rsvp-db",
       "database_id": "83b4f425-48ae-4b08-b286-83abdae277ed"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "libri-videos"
     }
   ]
 }
