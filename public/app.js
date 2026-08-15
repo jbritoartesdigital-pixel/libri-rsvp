@@ -113,13 +113,16 @@ function overview(root,e,s,info,role){
 async function guestsTab({root,event,role,eventId,token}){
  const p=safePerms(event),canManage=role==="admin"||p.manage_guests,canExport=role==="admin"||p.export_guests,base=role==="admin"?`/api/admin/events/${eventId}`:`/api/client/${encodeURIComponent(token)}`;
  root.innerHTML=`${event.rsvp_mode==="list"?`<section class="guide-card"><div class="guide-icon">✦</div><div><h3>Lista fechada</h3><p>Cadastre cada adulto e criança pelo nome. Qualquer integrante poderá ser encontrado no convite.</p></div></section>`:""}
- <div class="section-title"><div><h2>Convidados</h2><span class="meta">Busca por família, responsável ou qualquer integrante.</span></div><div class="actions">${canExport?`<button class="btn secondary small" id="export">Exportar CSV</button>`:""}${canManage?`<button class="btn secondary small" id="bulk">+ Adicionar vários</button><button class="btn" id="add">+ Cadastrar convidado/família</button>`:""}</div></div>
+ <div class="section-title"><div><h2>Convidados</h2><span class="meta">Busca por família, responsável ou qualquer integrante.</span></div><div class="actions">${canExport?`<button class="btn secondary small" id="export">Exportar CSV</button><button class="btn secondary small" id="exportPdf">Exportar PDF</button>`:""}${canManage?`<button class="btn secondary small" id="bulk">+ Adicionar vários</button><button class="btn" id="add">+ Cadastrar convidado/família</button>`:""}</div></div>
  <div class="toolbar"><div class="search-shell"><input id="search" placeholder="Digite para buscar..." autocomplete="off"></div><div class="segmented"><button class="active" data-filter="">Todos</button><button data-filter="yes">Confirmados</button><button data-filter="pending">Aguardando</button><button data-filter="no">Não irão</button></div></div><div id="guestList">${loading()}</div>`;
  let q="",status="",timer;
  const refresh=async()=>{try{const d=await api(`${base}/guests?q=${encodeURIComponent(q)}&status=${status}`);root.querySelector("#guestList").innerHTML=guestCards(d.guests,canManage);if(canManage)bindGuestActions(root,{event,role,eventId,token})}catch(e){root.querySelector("#guestList").innerHTML=`<div class="empty">${esc(e.message)}</div>`}};
  root.querySelector("#search").oninput=e=>{q=e.target.value;clearTimeout(timer);timer=setTimeout(refresh,220)};
  root.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-filter]").forEach(x=>x.classList.remove("active"));b.classList.add("active");status=b.dataset.filter;refresh()});
- if(canExport)root.querySelector("#export").onclick=()=>location.href=role==="admin"?`/api/admin/events/${eventId}/export.csv`:`/api/client/${encodeURIComponent(token)}/export.csv`;
+ if(canExport){
+  root.querySelector("#export").onclick=()=>location.href=role==="admin"?`/api/admin/events/${eventId}/export.csv`:`/api/client/${encodeURIComponent(token)}/export.csv`;
+  root.querySelector("#exportPdf").onclick=()=>exportEventPdf({event,base});
+ }
  if(canManage){root.querySelector("#add").onclick=()=>guestModal({event,role,eventId,token,onSaved:refresh});root.querySelector("#bulk").onclick=()=>bulkModal({event,role,eventId,token,onSaved:refresh})}
  await refresh();
 }
@@ -146,6 +149,183 @@ function guestModal({event,role,eventId,token,guest=null,onSaved}){
 function bulkModal({role,eventId,token,onSaved}){
  const w=modal("Adicionar vários convidados",`<form id="bf"><div class="notice"><strong>Um nome por linha.</strong>Cada nome entra como 1 adulto aguardando confirmação. Depois você pode editar e montar as famílias.</div><div class="field" style="margin-top:12px"><label>Lista</label><textarea name="names" rows="12" required></textarea></div><button class="btn block large">Cadastrar lista</button></form>`);
  w.querySelector("#bf").onsubmit=async ev=>{ev.preventDefault();const names=String(new FormData(ev.currentTarget).get("names")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),rows=names.map(name=>({primary_name:name,response_status:"pending",members:[{name,person_type:"adult",attendance_status:"pending",is_preapproved:true}]})),base=role==="admin"?`/api/admin/events/${eventId}`:`/api/client/${encodeURIComponent(token)}`;try{const r=await api(`${base}/guests/bulk`,{method:"POST",body:JSON.stringify({rows})});w.closeModal();toast(`${r.created.length} cadastrado(s)${r.failed.length?`, ${r.failed.length} falharam`:""}.`,!!r.failed.length);onSaved?.()}catch(e){toast(e.message,true)}};
+}
+
+
+async function exportEventPdf({event,base}){
+ const win=window.open("","_blank");
+ if(!win){
+  toast("O navegador bloqueou a janela do PDF. Libere pop-ups para este site.",true);
+  return;
+ }
+
+ win.document.open();
+ win.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preparando PDF...</title><style>body{font-family:Arial,sans-serif;padding:28px;color:#4f2d2a;background:#fffaf7}p{color:#866e68}</style></head><body><h2>Preparando o PDF...</h2><p>Carregando convidados e mensagens.</p></body></html>`);
+ win.document.close();
+
+ try{
+  const guestsData=await api(`${base}/guests?q=&status=`);
+  let messages=[];
+
+  try{
+   const messagesData=await api(`${base}/messages?q=`);
+   messages=messagesData.messages||[];
+  }catch{
+   messages=[];
+  }
+
+  const guests=guestsData.guests||[];
+  const members=guests.flatMap(g=>(g.members||[]).map(m=>({...m,group_name:g.group_label||g.primary_name})));
+
+  const peopleConfirmed=members.filter(m=>m.attendance_status==="yes").length;
+  const adultsConfirmed=members.filter(m=>m.attendance_status==="yes"&&m.person_type==="adult").length;
+  const childrenConfirmed=members.filter(m=>m.attendance_status==="yes"&&m.person_type==="child").length;
+  const peoplePending=members.filter(m=>m.attendance_status==="pending").length;
+  const peopleNo=members.filter(m=>m.attendance_status==="no").length;
+
+  const statusText=s=>s==="yes"?"Vai":s==="no"?"Não vai":"Aguardando";
+  const statusSymbol=s=>s==="yes"?"✓":s==="no"?"×":"•";
+  const statusClass=s=>s==="yes"?"yes":s==="no"?"no":"pending";
+
+  const guestSections=guests.length
+   ? guests.map(g=>`
+      <section class="family">
+       <div class="family-head">
+        <div>
+         <h3>${esc(g.group_label||g.primary_name)}</h3>
+         ${g.group_label?`<div class="contact">Responsável: ${esc(g.primary_name)}</div>`:""}
+        </div>
+        <span class="group-status ${statusClass(g.response_status)}">${esc(statusLabel(g.response_status))}</span>
+       </div>
+
+       <div class="people">
+        ${(g.members||[]).length
+         ? g.members.map(m=>`
+           <div class="person">
+            <div>
+             <span class="symbol ${statusClass(m.attendance_status)}">${statusSymbol(m.attendance_status)}</span>
+             <strong>${esc(m.name)}</strong>
+             <small>${m.person_type==="child"?"Criança":"Adulto"}</small>
+            </div>
+            <span class="person-status ${statusClass(m.attendance_status)}">${statusText(m.attendance_status)}</span>
+           </div>
+          `).join("")
+         : `<div class="muted">Nenhuma pessoa cadastrada.</div>`
+        }
+       </div>
+
+       ${g.phone?`<div class="meta-line"><strong>Telefone:</strong> ${esc(g.phone)}</div>`:""}
+       ${g.dietary?`<div class="meta-line"><strong>Restrição alimentar:</strong> ${esc(g.dietary)}</div>`:""}
+       ${g.notes?`<div class="meta-line"><strong>Observações:</strong> ${esc(g.notes)}</div>`:""}
+      </section>
+     `).join("")
+   : `<div class="empty">Nenhum convidado cadastrado.</div>`;
+
+  const messageSections=messages.length
+   ? messages.map(m=>`
+      <article class="message">
+       <div class="quote">“${esc(m.message)}”</div>
+       <div class="message-author">
+        <strong>${esc(m.name)}</strong>
+        ${m.responded_at?`<span> • ${esc(fmtDT(m.responded_at))}</span>`:""}
+       </div>
+      </article>
+     `).join("")
+   : `<div class="empty">Nenhuma mensagem carinhosa registrada.</div>`;
+
+  const html=`<!doctype html>
+<html lang="pt-BR">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+ <title>${esc(event.title)} • Lista de presença</title>
+ <style>
+  @page{size:A4;margin:14mm}
+  *{box-sizing:border-box}
+  body{margin:0;color:#4b302c;background:#fff;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.45}
+  .page{max-width:900px;margin:0 auto}
+  .header{padding:22px 24px;border:1px solid #eadbd5;border-radius:20px;background:linear-gradient(135deg,#fff8f4,#f6e8e2)}
+  .brand{font-family:Georgia,serif;font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:#a46454}
+  h1{margin:8px 0 4px;font-family:Georgia,serif;font-size:30px;font-weight:500;color:#6d4037}
+  .event-date{color:#806a64;font-size:12px}
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0 22px}
+  .stat{padding:12px 10px;border:1px solid #eadbd5;border-radius:13px;background:#fffaf7;text-align:center}
+  .stat b{display:block;font-size:20px;color:#704338}
+  .stat span{display:block;margin-top:3px;color:#8b746e;font-size:9px}
+  h2{margin:26px 0 12px;padding-bottom:7px;border-bottom:1px solid #dfc9c1;font-family:Georgia,serif;font-size:20px;font-weight:500;color:#74483e}
+  .family{break-inside:avoid;margin:0 0 10px;padding:13px 14px;border:1px solid #eadbd5;border-radius:14px}
+  .family-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px}
+  .family h3{margin:0;font-size:14px;color:#533530}
+  .contact,.muted{color:#8b746e;font-size:9px}
+  .group-status,.person-status{padding:4px 7px;border-radius:999px;font-size:8px;font-weight:700}
+  .yes{color:#47705a}.no{color:#9d4e4e}.pending{color:#9a6c2d}
+  .group-status.yes,.person-status.yes{background:#edf5ef}
+  .group-status.no,.person-status.no{background:#f9eeee}
+  .group-status.pending,.person-status.pending{background:#fbf3e5}
+  .people{border-top:1px solid #f0e4df}
+  .person{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid #f4ebe7}
+  .person:last-child{border-bottom:0}
+  .person strong{font-size:10px}
+  .person small{margin-left:5px;color:#9a8580;font-size:8px}
+  .symbol{display:inline-block;width:17px;font-weight:800}
+  .meta-line{margin-top:5px;color:#715a54;font-size:9px}
+  .message{break-inside:avoid;margin:0 0 10px;padding:15px 16px;border:1px solid #eadbd5;border-radius:14px;background:#fffaf7}
+  .quote{font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#604039}
+  .message-author{margin-top:8px;color:#8b746e;font-size:9px}
+  .footer{margin-top:26px;padding-top:10px;border-top:1px solid #eadbd5;color:#9a8580;font-size:8px;text-align:center}
+  .empty{padding:16px;border:1px dashed #dcc7c0;border-radius:12px;color:#8b746e;text-align:center}
+  .print-btn{position:fixed;right:18px;bottom:18px;padding:11px 16px;border:0;border-radius:12px;background:#8b5368;color:white;font-weight:700;box-shadow:0 8px 24px rgba(60,30,35,.2);cursor:pointer}
+  @media print{.print-btn{display:none}.page{max-width:none}.family,.message{box-shadow:none}}
+  @media(max-width:650px){.stats{grid-template-columns:repeat(2,1fr)}.stats .stat:first-child{grid-column:1/-1}}
+ </style>
+</head>
+<body>
+ <div class="page">
+  <header class="header">
+   <div class="brand">Libri RSVP</div>
+   <h1>${esc(event.title)}</h1>
+   <div class="event-date">${esc(fmtDate(event.event_date))}${event.event_time?` • ${esc(event.event_time)}`:""}</div>
+  </header>
+
+  <div class="stats">
+   <div class="stat"><b>${peopleConfirmed}</b><span>pessoas confirmadas</span></div>
+   <div class="stat"><b>${adultsConfirmed}</b><span>adultos</span></div>
+   <div class="stat"><b>${childrenConfirmed}</b><span>crianças</span></div>
+   <div class="stat"><b>${peoplePending}</b><span>aguardando</span></div>
+   <div class="stat"><b>${peopleNo}</b><span>não irão</span></div>
+  </div>
+
+  <h2>Lista de presença</h2>
+  ${guestSections}
+
+  <h2>Mensagens dos convidados 💌</h2>
+  ${messageSections}
+
+  <div class="footer">
+   Relatório gerado pelo Libri RSVP • ${esc(fmtDT(new Date().toISOString()))}
+  </div>
+ </div>
+
+ <button class="print-btn" onclick="window.print()">Salvar / imprimir PDF</button>
+</body>
+</html>`;
+
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+
+  setTimeout(()=>{
+   try{
+    win.focus();
+    win.print();
+   }catch{}
+  },500);
+ }catch(e){
+  win.document.open();
+  win.document.write(`<p style="font-family:Arial;padding:24px">Não foi possível preparar o PDF: ${esc(e.message)}</p>`);
+  win.document.close();
+  toast(e.message,true);
+ }
 }
 
 async function messagesTab({root,event,role,eventId,token}){
