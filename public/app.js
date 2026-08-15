@@ -25,7 +25,9 @@ const fmtDate = (date) =>
     : "Data não informada";
 
 const fmtDateTime = (value) => {
-  if (!value) return "Data não informada";
+  if (!value) {
+    return "Data não informada";
+  }
 
   try {
     return new Intl.DateTimeFormat("pt-BR", {
@@ -50,9 +52,10 @@ async function api(url, options = {}) {
   const contentType =
     response.headers.get("content-type") || "";
 
-  const data = contentType.includes("json")
-    ? await response.json()
-    : await response.text();
+  const data =
+    contentType.includes("json")
+      ? await response.json()
+      : await response.text();
 
   if (!response.ok) {
     throw Object.assign(
@@ -152,12 +155,10 @@ function actionLabel(action) {
     event_archived: "Evento arquivado",
     event_unarchived: "Evento restaurado",
     client_link_reset: "Link da cliente substituído",
-
     guest_created: "Convidado adicionado",
     guest_updated: "Convidado editado",
     guest_deleted: "Convidado excluído",
     guest_restored: "Convidado restaurado",
-
     rsvp_submitted: "Confirmação enviada",
   };
 
@@ -168,7 +169,11 @@ function closeModal(wrap) {
   wrap.remove();
 }
 
-function modalShell(title, content, subtitle = "") {
+function modalShell(
+  title,
+  content,
+  subtitle = ""
+) {
   const wrap =
     document.createElement("div");
 
@@ -867,7 +872,7 @@ function eventFormHtml(
         >
 
         <span class="subtle">
-          Opcional. Depois podemos facilitar o upload direto.
+          Opcional.
         </span>
 
       </div>
@@ -1055,7 +1060,9 @@ function eventFormHtml(
   `;
 }
 
-function eventPayloadFromForm(formElement) {
+function eventPayloadFromForm(
+  formElement
+) {
   const form =
     new FormData(
       formElement
@@ -1823,6 +1830,7 @@ async function renderAdminEvent(id) {
       guestModal({
         eventId: id,
         role: "admin",
+
         maxPeople:
           event.max_people_per_rsvp,
       });
@@ -2152,6 +2160,7 @@ async function trashModal(
                 {
                   method:
                     "POST",
+
                   body: "{}",
                 }
               );
@@ -2523,7 +2532,7 @@ function membersEditorHtml(
 
             ${
               maxPeople
-                ? `Máximo de ${maxPeople} pessoa(s).`
+                ? `Máximo de ${maxPeople} pessoa(s) por confirmação.`
                 : "Informe o nome de cada pessoa."
             }
 
@@ -2534,6 +2543,15 @@ function membersEditorHtml(
       </div>
 
       <div id="membersList"></div>
+
+      <div
+        id="membersLimitState"
+        class="subtle"
+        style="
+          display:none;
+          margin:8px 0 12px;
+        "
+      ></div>
 
       <div class="actions">
 
@@ -2614,14 +2632,6 @@ function createMemberRow(
     </button>
   `;
 
-  row
-    .querySelector(
-      ".remove-member"
-    )
-    .onclick = () => {
-      row.remove();
-    };
-
   return row;
 }
 
@@ -2637,6 +2647,21 @@ function setupMembersEditor({
       "#membersList"
     );
 
+  const addAdultButton =
+    root.querySelector(
+      "#addAdult"
+    );
+
+  const addChildButton =
+    root.querySelector(
+      "#addChild"
+    );
+
+  const limitState =
+    root.querySelector(
+      "#membersLimitState"
+    );
+
   let touchedFirst =
     false;
 
@@ -2646,14 +2671,110 @@ function setupMembersEditor({
     ).length;
   }
 
-  function canAdd() {
+  function numericLimit() {
     if (
-      maxPeople &&
-      currentCount() >=
-        Number(maxPeople)
+      maxPeople === null ||
+      maxPeople === undefined ||
+      String(maxPeople).trim() === ""
+    ) {
+      return null;
+    }
+
+    const number =
+      Number(maxPeople);
+
+    return Number.isFinite(number)
+      ? number
+      : null;
+  }
+
+  function updateLimitState() {
+    const count =
+      currentCount();
+
+    const limit =
+      numericLimit();
+
+    if (!limit) {
+      addAdultButton.disabled =
+        false;
+
+      addChildButton.disabled =
+        false;
+
+      limitState.style.display =
+        "none";
+
+      limitState.textContent =
+        "";
+
+      return;
+    }
+
+    const reached =
+      count >= limit;
+
+    addAdultButton.disabled =
+      reached;
+
+    addChildButton.disabled =
+      reached;
+
+    if (count > limit) {
+      limitState.style.display =
+        "block";
+
+      limitState.style.color =
+        "var(--bad)";
+
+      limitState.style.fontWeight =
+        "700";
+
+      limitState.textContent =
+        `Esta confirmação possui ${count} pessoas, mas o limite atual é ${limit}. Remova ${count - limit} pessoa(s) antes de salvar.`;
+
+      return;
+    }
+
+    if (count === limit) {
+      limitState.style.display =
+        "block";
+
+      limitState.style.color =
+        "var(--muted)";
+
+      limitState.style.fontWeight =
+        "600";
+
+      limitState.textContent =
+        `Limite atingido: ${count} de ${limit} pessoa(s).`;
+
+      return;
+    }
+
+    limitState.style.display =
+      "block";
+
+    limitState.style.color =
+      "var(--muted)";
+
+    limitState.style.fontWeight =
+      "400";
+
+    limitState.textContent =
+      `${count} de ${limit} pessoa(s) adicionada(s).`;
+  }
+
+  function canAdd() {
+    const limit =
+      numericLimit();
+
+    if (
+      limit &&
+      currentCount() >= limit
     ) {
       toast(
-        `O limite desta confirmação é de ${maxPeople} pessoa(s).`,
+        `O limite desta confirmação é de ${limit} pessoa(s).`,
         true
       );
 
@@ -2665,15 +2786,20 @@ function setupMembersEditor({
 
   function add(
     personType,
-    name = ""
+    name = "",
+    ignoreLimit = false
   ) {
-    if (!canAdd()) {
-      return;
+    if (
+      !ignoreLimit &&
+      !canAdd()
+    ) {
+      return null;
     }
 
     const row =
       createMemberRow({
         name,
+
         person_type:
           personType,
       });
@@ -2695,7 +2821,19 @@ function setupMembersEditor({
       }
     );
 
+    row
+      .querySelector(
+        ".remove-member"
+      )
+      .onclick = () => {
+        row.remove();
+
+        updateLimitState();
+      };
+
     list.append(row);
+
+    updateLimitState();
 
     return row;
   }
@@ -2703,32 +2841,34 @@ function setupMembersEditor({
   if (initialMembers.length) {
     initialMembers.forEach(
       (member) => {
+        /*
+          Registros que já existiam são sempre exibidos,
+          mesmo se estiverem acima de um limite definido
+          posteriormente.
+        */
         add(
           member.person_type,
-          member.name
+          member.name,
+          true
         );
       }
     );
-  } else if (startWithPrimary) {
+  } else if (
+    startWithPrimary
+  ) {
     add(
       "adult",
       primaryInput?.value || ""
     );
   }
 
-  root
-    .querySelector(
-      "#addAdult"
-    )
-    .onclick = () => {
+  addAdultButton.onclick =
+    () => {
       add("adult");
     };
 
-  root
-    .querySelector(
-      "#addChild"
-    )
-    .onclick = () => {
+  addChildButton.onclick =
+    () => {
       add("child");
     };
 
@@ -2761,6 +2901,8 @@ function setupMembersEditor({
     );
   }
 
+  updateLimitState();
+
   return {
     getMembers() {
       return [
@@ -2787,6 +2929,8 @@ function setupMembersEditor({
 
     clear() {
       list.innerHTML = "";
+
+      updateLimitState();
     },
 
     ensurePrimary() {
@@ -2801,6 +2945,17 @@ function setupMembersEditor({
             ""
         );
       }
+    },
+
+    isOverLimit() {
+      const limit =
+        numericLimit();
+
+      return Boolean(
+        limit &&
+        currentCount() >
+          limit
+      );
     },
   };
 }
@@ -2997,10 +3152,12 @@ function guestModal({
 
   const editor =
     setupMembersEditor({
-      root: membersSection,
+      root:
+        membersSection,
 
       initialMembers:
-        guest?.members || [],
+        guest?.members ||
+        [],
 
       maxPeople,
 
@@ -3069,7 +3226,7 @@ function guestModal({
           Number(maxPeople)
       ) {
         toast(
-          `O limite é de ${maxPeople} pessoa(s).`,
+          `Esta confirmação possui ${members.length} pessoas, mas o limite atual é ${maxPeople}. Remova ${members.length - Number(maxPeople)} pessoa(s) antes de salvar.`,
           true
         );
 
@@ -3988,7 +4145,8 @@ function renderRsvp(
         membersSection,
 
       initialMembers:
-        guest?.members || [],
+        guest?.members ||
+        [],
 
       maxPeople:
         event.max_people_per_rsvp,
@@ -4086,7 +4244,7 @@ function renderRsvp(
           )
       ) {
         toast(
-          `Esta confirmação permite no máximo ${event.max_people_per_rsvp} pessoa(s).`,
+          `Esta confirmação possui ${members.length} pessoas, mas o limite atual é ${event.max_people_per_rsvp}. Remova ${members.length - Number(event.max_people_per_rsvp)} pessoa(s) antes de enviar.`,
           true
         );
 
