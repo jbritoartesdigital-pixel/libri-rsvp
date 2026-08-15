@@ -3,6 +3,12 @@ const JSON_HEADERS = {
   "cache-control": "no-store",
 };
 
+const RSVP_TIME_ZONE = "America/Sao_Paulo";
+
+// =========================================================
+// WORKER
+// =========================================================
+
 export default {
   async fetch(request, env) {
     try {
@@ -47,10 +53,16 @@ async function handleApi(request, env, url) {
   // ADMIN LOGIN
   // =======================================================
 
-  if (path === "/api/admin/login" && method === "POST") {
+  if (
+    path === "/api/admin/login" &&
+    method === "POST"
+  ) {
     const body = await bodyJson(request);
 
-    if (!env.ADMIN_PASSWORD || !env.SESSION_SECRET) {
+    if (
+      !env.ADMIN_PASSWORD ||
+      !env.SESSION_SECRET
+    ) {
       return json(
         {
           error:
@@ -72,7 +84,8 @@ async function handleApi(request, env, url) {
       );
     }
 
-    const cookie = await createAdminSession(env);
+    const cookie =
+      await createAdminSession(env);
 
     return json(
       {
@@ -85,7 +98,14 @@ async function handleApi(request, env, url) {
     );
   }
 
-  if (path === "/api/admin/logout" && method === "POST") {
+  // =======================================================
+  // ADMIN LOGOUT
+  // =======================================================
+
+  if (
+    path === "/api/admin/logout" &&
+    method === "POST"
+  ) {
     return json(
       {
         ok: true,
@@ -98,8 +118,17 @@ async function handleApi(request, env, url) {
     );
   }
 
-  if (path === "/api/admin/me" && method === "GET") {
-    if (!(await isAdmin(request, env))) {
+  // =======================================================
+  // ADMIN ME
+  // =======================================================
+
+  if (
+    path === "/api/admin/me" &&
+    method === "GET"
+  ) {
+    if (
+      !(await isAdmin(request, env))
+    ) {
       return json(
         {
           error: "Não autorizado.",
@@ -113,11 +142,20 @@ async function handleApi(request, env, url) {
     });
   }
 
-  if (path.startsWith("/api/admin/")) {
-    if (!(await isAdmin(request, env))) {
+  // =======================================================
+  // PROTEGER ROTAS ADMIN
+  // =======================================================
+
+  if (
+    path.startsWith("/api/admin/")
+  ) {
+    if (
+      !(await isAdmin(request, env))
+    ) {
       return json(
         {
-          error: "Sessão expirada. Entre novamente.",
+          error:
+            "Sessão expirada. Entre novamente.",
         },
         401
       );
@@ -125,17 +163,24 @@ async function handleApi(request, env, url) {
   }
 
   // =======================================================
-  // ADMIN - LISTA DE EVENTOS
+  // ADMIN
+  // LISTAR EVENTOS
   // =======================================================
 
-  if (path === "/api/admin/events" && method === "GET") {
+  if (
+    path === "/api/admin/events" &&
+    method === "GET"
+  ) {
     const archived =
-      url.searchParams.get("archived") === "1";
+      url.searchParams.get(
+        "archived"
+      ) === "1";
 
-    const events = await getEventsWithSummary(
-      env,
-      archived
-    );
+    const events =
+      await getEventsWithSummary(
+        env,
+        archived
+      );
 
     return json({
       events,
@@ -143,22 +188,36 @@ async function handleApi(request, env, url) {
   }
 
   // =======================================================
-  // ADMIN - CRIAR EVENTO
+  // ADMIN
+  // CRIAR EVENTO
   // =======================================================
 
-  if (path === "/api/admin/events" && method === "POST") {
-    const body = await bodyJson(request);
+  if (
+    path === "/api/admin/events" &&
+    method === "POST"
+  ) {
+    const body =
+      await bodyJson(request);
 
-    if (!String(body.title || "").trim()) {
+    if (
+      !String(
+        body.title || ""
+      ).trim()
+    ) {
       return json(
         {
-          error: "Informe o nome do evento.",
+          error:
+            "Informe o nome do evento.",
         },
         400
       );
     }
 
-    const event = await createEvent(env, body);
+    const event =
+      await createEvent(
+        env,
+        body
+      );
 
     await audit(env, {
       eventId: event.id,
@@ -175,108 +234,165 @@ async function handleApi(request, env, url) {
   }
 
   // =======================================================
-  // ADMIN - EVENTO
+  // ADMIN
+  // EVENTO
   // =======================================================
 
-  let match = path.match(
-    /^\/api\/admin\/events\/([^/]+)$/
-  );
+  let match =
+    path.match(
+      /^\/api\/admin\/events\/([^/]+)$/
+    );
 
-  if (match && method === "GET") {
-    const eventId = decodeURIComponent(match[1]);
+  if (
+    match &&
+    method === "GET"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const event = await getEvent(env, eventId);
+    const event =
+      await getEvent(
+        env,
+        eventId
+      );
 
     if (!event) {
       return json(
         {
-          error: "Evento não encontrado.",
+          error:
+            "Evento não encontrado.",
         },
         404
       );
     }
 
-    const summary = await getSummary(env, eventId);
+    const summary =
+      await getSummary(
+        env,
+        eventId
+      );
 
-    const origin = new URL(request.url).origin;
+    const origin =
+      new URL(
+        request.url
+      ).origin;
 
     return json({
-      event: serializeEvent(event),
+      event:
+        serializeEvent(event),
+
       summary,
 
-      client_url: event.client_token
-        ? `${origin}/cliente/${encodeURIComponent(
-            event.client_token
-          )}`
-        : null,
+      client_url:
+        event.client_token
+          ? `${origin}/cliente/${encodeURIComponent(
+              event.client_token
+            )}`
+          : null,
 
-      public_url: `${origin}/e/${encodeURIComponent(
-        event.slug
-      )}`,
+      public_url:
+        `${origin}/e/${encodeURIComponent(
+          event.slug
+        )}`,
     });
   }
 
   // =======================================================
-  // ADMIN - EDITAR EVENTO
+  // ADMIN
+  // EDITAR EVENTO
   // =======================================================
 
-  if (match && method === "PATCH") {
-    const eventId = decodeURIComponent(match[1]);
+  if (
+    match &&
+    method === "PATCH"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const current = await getEvent(env, eventId);
+    const current =
+      await getEvent(
+        env,
+        eventId
+      );
 
     if (!current) {
       return json(
         {
-          error: "Evento não encontrado.",
+          error:
+            "Evento não encontrado.",
         },
         404
       );
     }
 
-    const body = await bodyJson(request);
+    const body =
+      await bodyJson(request);
 
-    const title = String(
-      body.title ?? current.title
-    ).trim();
+    const title =
+      String(
+        body.title ??
+          current.title
+      ).trim();
 
     if (!title) {
       return json(
         {
-          error: "Informe o nome do evento.",
+          error:
+            "Informe o nome do evento.",
         },
         400
       );
     }
 
-    const currentExtraFields = safeJson(
-      current.extra_fields,
-      {}
-    );
+    const currentExtraFields =
+      safeJson(
+        current.extra_fields,
+        {}
+      );
 
     const extraFields =
-      body.extra_fields !== undefined
-        ? normalizeExtraFields(body.extra_fields)
-        : currentExtraFields;
+      body.extra_fields !==
+      undefined
+        ? normalizeExtraFields(
+            body.extra_fields
+          )
+        : normalizeExtraFields(
+            currentExtraFields
+          );
 
     const rsvpMode =
       body.rsvp_mode === "list"
         ? "list"
-        : body.rsvp_mode === "free"
+        : body.rsvp_mode ===
+            "free"
           ? "free"
           : current.rsvp_mode;
 
     const maxPeople =
       normalizeOptionalInteger(
-        body.max_people_per_rsvp !== undefined
+        body.max_people_per_rsvp !==
+          undefined
           ? body.max_people_per_rsvp
           : current.max_people_per_rsvp,
         1,
         100
       );
 
+    const backgroundImage =
+      normalizeOptionalUrl(
+        body.background_image_url !==
+          undefined
+          ? body.background_image_url
+          : current.background_image_url
+      );
+
     await env.DB.prepare(`
       UPDATE events
+
       SET
         title = ?,
         event_date = ?,
@@ -290,19 +406,22 @@ async function handleApi(request, env, url) {
         rsvp_deadline = ?,
         max_people_per_rsvp = ?,
         updated_at = ?
+
       WHERE id = ?
     `)
       .bind(
         title,
 
         cleanNullable(
-          body.event_date !== undefined
+          body.event_date !==
+            undefined
             ? body.event_date
             : current.event_date
         ),
 
         cleanNullable(
-          body.event_time !== undefined
+          body.event_time !==
+            undefined
             ? body.event_time
             : current.event_time
         ),
@@ -310,31 +429,33 @@ async function handleApi(request, env, url) {
         rsvpMode,
 
         cleanNullable(
-          body.welcome_message !== undefined
+          body.welcome_message !==
+            undefined
             ? body.welcome_message
             : current.welcome_message
         ),
 
         safeColor(
           body.primary_color,
-          current.primary_color || "#6f4f5f"
+          current.primary_color ||
+            "#6f4f5f"
         ),
 
         safeColor(
           body.accent_color,
-          current.accent_color || "#f4e8ed"
+          current.accent_color ||
+            "#f4e8ed"
+        ),
+
+        backgroundImage,
+
+        JSON.stringify(
+          extraFields
         ),
 
         cleanNullable(
-          body.background_image_url !== undefined
-            ? body.background_image_url
-            : current.background_image_url
-        ),
-
-        JSON.stringify(extraFields),
-
-        cleanNullable(
-          body.rsvp_deadline !== undefined
+          body.rsvp_deadline !==
+            undefined
             ? body.rsvp_deadline
             : current.rsvp_deadline
         ),
@@ -357,53 +478,92 @@ async function handleApi(request, env, url) {
     });
 
     return json({
-      event: serializeEvent(
-        await getEvent(env, eventId)
-      ),
+      event:
+        serializeEvent(
+          await getEvent(
+            env,
+            eventId
+          )
+        ),
     });
   }
 
   // =======================================================
-  // ADMIN - PAUSAR / REATIVAR
+  // ADMIN
+  // PAUSAR / REATIVAR
   // =======================================================
 
-  match = path.match(
-    /^\/api\/admin\/events\/([^/]+)\/status$/
-  );
+  match =
+    path.match(
+      /^\/api\/admin\/events\/([^/]+)\/status$/
+    );
 
-  if (match && method === "POST") {
-    const eventId = decodeURIComponent(match[1]);
+  if (
+    match &&
+    method === "POST"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const event = await getEvent(env, eventId);
+    const event =
+      await getEvent(
+        env,
+        eventId
+      );
 
     if (!event) {
       return json(
         {
-          error: "Evento não encontrado.",
+          error:
+            "Evento não encontrado.",
         },
         404
       );
     }
 
-    const body = await bodyJson(request);
+    if (
+      event.archived_at
+    ) {
+      return json(
+        {
+          error:
+            "Restaure o evento antes de alterar o status.",
+        },
+        400
+      );
+    }
+
+    const body =
+      await bodyJson(request);
 
     const status =
-      body.status === "inactive"
+      body.status ===
+      "inactive"
         ? "inactive"
         : "active";
 
     await env.DB.prepare(`
       UPDATE events
-      SET status = ?,
-          updated_at = ?
+
+      SET
+        status = ?,
+        updated_at = ?
+
       WHERE id = ?
     `)
-      .bind(status, now(), eventId)
+      .bind(
+        status,
+        now(),
+        eventId
+      )
       .run();
 
     await audit(env, {
       eventId,
       actorRole: "admin",
+
       action:
         status === "active"
           ? "event_reactivated"
@@ -411,41 +571,70 @@ async function handleApi(request, env, url) {
     });
 
     return json({
-      event: serializeEvent(
-        await getEvent(env, eventId)
-      ),
+      event:
+        serializeEvent(
+          await getEvent(
+            env,
+            eventId
+          )
+        ),
     });
   }
 
   // =======================================================
-  // ADMIN - ARQUIVAR EVENTO
+  // ADMIN
+  // ARQUIVAR EVENTO
   // =======================================================
 
-  match = path.match(
-    /^\/api\/admin\/events\/([^/]+)\/archive$/
-  );
+  match =
+    path.match(
+      /^\/api\/admin\/events\/([^/]+)\/archive$/
+    );
 
-  if (match && method === "POST") {
-    const eventId = decodeURIComponent(match[1]);
+  if (
+    match &&
+    method === "POST"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const event = await getEvent(env, eventId);
+    const event =
+      await getEvent(
+        env,
+        eventId
+      );
 
     if (!event) {
       return json(
         {
-          error: "Evento não encontrado.",
+          error:
+            "Evento não encontrado.",
         },
         404
       );
     }
 
-    const archivedAt = now();
+    if (
+      event.archived_at
+    ) {
+      return json({
+        ok: true,
+      });
+    }
+
+    const archivedAt =
+      now();
 
     await env.DB.prepare(`
       UPDATE events
-      SET archived_at = ?,
-          status = 'inactive',
-          updated_at = ?
+
+      SET
+        archived_at = ?,
+        status = 'inactive',
+        updated_at = ?
+
       WHERE id = ?
     `)
       .bind(
@@ -467,22 +656,35 @@ async function handleApi(request, env, url) {
   }
 
   // =======================================================
-  // ADMIN - RESTAURAR EVENTO
+  // ADMIN
+  // RESTAURAR EVENTO
   // =======================================================
 
-  match = path.match(
-    /^\/api\/admin\/events\/([^/]+)\/unarchive$/
-  );
+  match =
+    path.match(
+      /^\/api\/admin\/events\/([^/]+)\/unarchive$/
+    );
 
-  if (match && method === "POST") {
-    const eventId = decodeURIComponent(match[1]);
+  if (
+    match &&
+    method === "POST"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const event = await getEvent(env, eventId);
+    const event =
+      await getEvent(
+        env,
+        eventId
+      );
 
     if (!event) {
       return json(
         {
-          error: "Evento não encontrado.",
+          error:
+            "Evento não encontrado.",
         },
         404
       );
@@ -490,18 +692,25 @@ async function handleApi(request, env, url) {
 
     await env.DB.prepare(`
       UPDATE events
-      SET archived_at = NULL,
-          status = 'active',
-          updated_at = ?
+
+      SET
+        archived_at = NULL,
+        status = 'active',
+        updated_at = ?
+
       WHERE id = ?
     `)
-      .bind(now(), eventId)
+      .bind(
+        now(),
+        eventId
+      )
       .run();
 
     await audit(env, {
       eventId,
       actorRole: "admin",
-      action: "event_unarchived",
+      action:
+        "event_unarchived",
     });
 
     return json({
@@ -510,33 +719,50 @@ async function handleApi(request, env, url) {
   }
 
   // =======================================================
-  // ADMIN - TROCAR LINK DA CLIENTE
+  // ADMIN
+  // TROCAR LINK DA CLIENTE
   // =======================================================
 
-  match = path.match(
-    /^\/api\/admin\/events\/([^/]+)\/client-link\/reset$/
-  );
+  match =
+    path.match(
+      /^\/api\/admin\/events\/([^/]+)\/client-link\/reset$/
+    );
 
-  if (match && method === "POST") {
-    const eventId = decodeURIComponent(match[1]);
+  if (
+    match &&
+    method === "POST"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const event = await getEvent(env, eventId);
+    const event =
+      await getEvent(
+        env,
+        eventId
+      );
 
     if (!event) {
       return json(
         {
-          error: "Evento não encontrado.",
+          error:
+            "Evento não encontrado.",
         },
         404
       );
     }
 
-    const token = randomToken();
+    const token =
+      randomToken();
 
     await env.DB.prepare(`
       UPDATE events
-      SET client_token = ?,
-          updated_at = ?
+
+      SET
+        client_token = ?,
+        updated_at = ?
+
       WHERE id = ?
     `)
       .bind(
@@ -549,79 +775,132 @@ async function handleApi(request, env, url) {
     await audit(env, {
       eventId,
       actorRole: "admin",
-      action: "client_link_reset",
+      action:
+        "client_link_reset",
     });
 
     return json({
       client_url:
-        `${new URL(request.url).origin}` +
-        `/cliente/${encodeURIComponent(token)}`,
+        `${new URL(
+          request.url
+        ).origin}` +
+        `/cliente/${encodeURIComponent(
+          token
+        )}`,
     });
   }
 
   // =======================================================
-  // ADMIN - HISTÓRICO
+  // ADMIN
+  // HISTÓRICO
   // =======================================================
 
-  match = path.match(
-    /^\/api\/admin\/events\/([^/]+)\/audit$/
-  );
+  match =
+    path.match(
+      /^\/api\/admin\/events\/([^/]+)\/audit$/
+    );
 
-  if (match && method === "GET") {
-    const eventId = decodeURIComponent(match[1]);
+  if (
+    match &&
+    method === "GET"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const event = await getEvent(env, eventId);
+    const event =
+      await getEvent(
+        env,
+        eventId
+      );
 
     if (!event) {
       return json(
         {
-          error: "Evento não encontrado.",
+          error:
+            "Evento não encontrado.",
         },
         404
       );
     }
 
-    const limit = integerBetween(
-      url.searchParams.get("limit") || 100,
-      1,
-      300
-    );
+    const limit =
+      integerBetween(
+        url.searchParams.get(
+          "limit"
+        ) || 100,
+        1,
+        300
+      );
 
-    const result = await env.DB.prepare(`
-      SELECT *
-      FROM audit_logs
-      WHERE event_id = ?
-      ORDER BY created_at DESC
-      LIMIT ?
-    `)
-      .bind(
-        eventId,
-        limit
-      )
-      .all();
+    const result =
+      await env.DB.prepare(`
+        SELECT *
+
+        FROM audit_logs
+
+        WHERE event_id = ?
+
+        ORDER BY
+          created_at DESC
+
+        LIMIT ?
+      `)
+        .bind(
+          eventId,
+          limit
+        )
+        .all();
 
     return json({
-      logs: result.results.map(
-        serializeAudit
-      ),
+      logs:
+        result.results.map(
+          serializeAudit
+        ),
     });
   }
 
   // =======================================================
-  // ADMIN - LIXEIRA
+  // ADMIN
+  // LIXEIRA
   // =======================================================
 
-  match = path.match(
-    /^\/api\/admin\/events\/([^/]+)\/trash$/
-  );
-
-  if (match && method === "GET") {
-    const eventId = decodeURIComponent(match[1]);
-
-    const guests = await listDeletedGuests(
-      env,
-      eventId
+  match =
+    path.match(
+      /^\/api\/admin\/events\/([^/]+)\/trash$/
     );
+
+  if (
+    match &&
+    method === "GET"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
+
+    const event =
+      await getEvent(
+        env,
+        eventId
+      );
+
+    if (!event) {
+      return json(
+        {
+          error:
+            "Evento não encontrado.",
+        },
+        404
+      );
+    }
+
+    const guests =
+      await listDeletedGuests(
+        env,
+        eventId
+      );
 
     return json({
       guests,
@@ -629,22 +908,35 @@ async function handleApi(request, env, url) {
   }
 
   // =======================================================
-  // ADMIN - RESTAURAR CONVIDADO
+  // ADMIN
+  // RESTAURAR CONVIDADO
   // =======================================================
 
-  match = path.match(
-    /^\/api\/admin\/events\/([^/]+)\/guests\/([^/]+)\/restore$/
-  );
-
-  if (match && method === "POST") {
-    const eventId = decodeURIComponent(match[1]);
-    const guestId = decodeURIComponent(match[2]);
-
-    const guest = await getDeletedGuestRow(
-      env,
-      eventId,
-      guestId
+  match =
+    path.match(
+      /^\/api\/admin\/events\/([^/]+)\/guests\/([^/]+)\/restore$/
     );
+
+  if (
+    match &&
+    method === "POST"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
+
+    const guestId =
+      decodeURIComponent(
+        match[2]
+      );
+
+    const guest =
+      await getDeletedGuestRow(
+        env,
+        eventId,
+        guestId
+      );
 
     if (!guest) {
       return json(
@@ -666,72 +958,111 @@ async function handleApi(request, env, url) {
       eventId,
       guestId,
       actorRole: "admin",
-      action: "guest_restored",
+      action:
+        "guest_restored",
+
       details: {
-        name: guest.primary_name,
+        name:
+          guest.primary_name,
       },
     });
 
     return json({
-      guest: await getGuest(
-        env,
-        eventId,
-        guestId
-      ),
+      guest:
+        await getGuest(
+          env,
+          eventId,
+          guestId
+        ),
     });
   }
 
   // =======================================================
-  // ADMIN - LISTAR / ADICIONAR CONVIDADOS
+  // ADMIN
+  // LISTAR / ADICIONAR CONVIDADOS
   // =======================================================
 
-  match = path.match(
-    /^\/api\/admin\/events\/([^/]+)\/guests$/
-  );
+  match =
+    path.match(
+      /^\/api\/admin\/events\/([^/]+)\/guests$/
+    );
 
-  if (match && method === "GET") {
-    const eventId = decodeURIComponent(match[1]);
+  if (
+    match &&
+    method === "GET"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const event = await getEvent(env, eventId);
+    const event =
+      await getEvent(
+        env,
+        eventId
+      );
 
     if (!event) {
       return json(
         {
-          error: "Evento não encontrado.",
+          error:
+            "Evento não encontrado.",
         },
         404
       );
     }
 
-    const guests = await listGuests(
-      env,
-      eventId,
-      url
-    );
+    const guests =
+      await listGuests(
+        env,
+        eventId,
+        url
+      );
 
     return json({
       guests,
     });
   }
 
-  if (match && method === "POST") {
-    const eventId = decodeURIComponent(match[1]);
+  if (
+    match &&
+    method === "POST"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const event = await getEvent(env, eventId);
+    const event =
+      await getEvent(
+        env,
+        eventId
+      );
 
     if (!event) {
       return json(
         {
-          error: "Evento não encontrado.",
+          error:
+            "Evento não encontrado.",
         },
         404
       );
     }
 
-    const body = await bodyJson(request);
+    const body =
+      await bodyJson(request);
 
-    const members = normalizeMembers(
-      body.members
+    const members =
+      normalizeMembers(
+        body.members
+      );
+
+    validateMemberLimit(
+      event,
+      members,
+      allowedStatus(
+        body.response_status
+      )
     );
 
     const duplicateMatches =
@@ -741,99 +1072,180 @@ async function handleApi(request, env, url) {
         members
       );
 
-    const guest = await createGuest(
-      env,
-      eventId,
-      body,
-      "admin"
-    );
+    const guest =
+      await createGuest(
+        env,
+        eventId,
+        body,
+        "admin"
+      );
 
     await audit(env, {
       eventId,
       guestId: guest.id,
       actorRole: "admin",
-      action: "guest_created",
+      action:
+        "guest_created",
+
       details: {
-        name: guest.primary_name,
+        name:
+          guest.primary_name,
       },
     });
 
     return json({
       guest,
+
       duplicate_matches:
         duplicateMatches,
     });
   }
 
   // =======================================================
-  // ADMIN - EDITAR / EXCLUIR CONVIDADO
+  // ADMIN
+  // EDITAR / EXCLUIR CONVIDADO
   // =======================================================
 
-  match = path.match(
-    /^\/api\/admin\/events\/([^/]+)\/guests\/([^/]+)$/
-  );
-
-  if (match && method === "PATCH") {
-    const eventId = decodeURIComponent(match[1]);
-    const guestId = decodeURIComponent(match[2]);
-
-    const body = await bodyJson(request);
-
-    const duplicateMatches =
-      await findDuplicateMembers(
-        env,
-        eventId,
-        normalizeMembers(body.members),
-        guestId
-      );
-
-    const guest = await updateGuest(
-      env,
-      eventId,
-      guestId,
-      body
+  match =
+    path.match(
+      /^\/api\/admin\/events\/([^/]+)\/guests\/([^/]+)$/
     );
 
-    if (!guest) {
+  if (
+    match &&
+    method === "PATCH"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
+
+    const guestId =
+      decodeURIComponent(
+        match[2]
+      );
+
+    const event =
+      await getEvent(
+        env,
+        eventId
+      );
+
+    if (!event) {
       return json(
         {
-          error: "Convidado não encontrado.",
+          error:
+            "Evento não encontrado.",
         },
         404
       );
     }
 
+    const body =
+      await bodyJson(request);
+
+    const existing =
+      await getGuest(
+        env,
+        eventId,
+        guestId
+      );
+
+    if (!existing) {
+      return json(
+        {
+          error:
+            "Convidado não encontrado.",
+        },
+        404
+      );
+    }
+
+    const status =
+      allowedStatus(
+        body.response_status ??
+          existing.response_status
+      );
+
+    const members =
+      status === "no"
+        ? []
+        : body.members ===
+            undefined
+          ? existing.members
+          : normalizeMembers(
+              body.members
+            );
+
+    validateMemberLimit(
+      event,
+      members,
+      status
+    );
+
+    const duplicateMatches =
+      await findDuplicateMembers(
+        env,
+        eventId,
+        members,
+        guestId
+      );
+
+    const guest =
+      await updateGuest(
+        env,
+        eventId,
+        guestId,
+        body
+      );
+
     await audit(env, {
       eventId,
       guestId,
       actorRole: "admin",
-      action: "guest_updated",
+      action:
+        "guest_updated",
+
       details: {
-        name: guest.primary_name,
+        name:
+          guest.primary_name,
       },
     });
 
     return json({
       guest,
+
       duplicate_matches:
         duplicateMatches,
     });
   }
 
-  if (match && method === "DELETE") {
-    const eventId = decodeURIComponent(match[1]);
-    const guestId = decodeURIComponent(match[2]);
+  if (
+    match &&
+    method === "DELETE"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const guest = await getGuest(
-      env,
-      eventId,
-      guestId
-    );
+    const guestId =
+      decodeURIComponent(
+        match[2]
+      );
+
+    const guest =
+      await getGuest(
+        env,
+        eventId,
+        guestId
+      );
 
     if (!guest) {
       return json(
         {
-          error: "Convidado não encontrado.",
+          error:
+            "Convidado não encontrado.",
         },
         404
       );
@@ -849,9 +1261,12 @@ async function handleApi(request, env, url) {
       eventId,
       guestId,
       actorRole: "admin",
-      action: "guest_deleted",
+      action:
+        "guest_deleted",
+
       details: {
-        name: guest.primary_name,
+        name:
+          guest.primary_name,
       },
     });
 
@@ -861,31 +1276,45 @@ async function handleApi(request, env, url) {
   }
 
   // =======================================================
-  // ADMIN - EXPORTAR CSV
+  // ADMIN
+  // EXPORTAR CSV
   // =======================================================
 
-  match = path.match(
-    /^\/api\/admin\/events\/([^/]+)\/export\.csv$/
-  );
+  match =
+    path.match(
+      /^\/api\/admin\/events\/([^/]+)\/export\.csv$/
+    );
 
-  if (match && method === "GET") {
-    const eventId = decodeURIComponent(match[1]);
+  if (
+    match &&
+    method === "GET"
+  ) {
+    const eventId =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const event = await getEvent(env, eventId);
+    const event =
+      await getEvent(
+        env,
+        eventId
+      );
 
     if (!event) {
       return json(
         {
-          error: "Evento não encontrado.",
+          error:
+            "Evento não encontrado.",
         },
         404
       );
     }
 
-    const guests = await listGuestsRaw(
-      env,
-      eventId
-    );
+    const guests =
+      await listGuestsRaw(
+        env,
+        eventId
+      );
 
     return csvResponse(
       guests,
@@ -894,20 +1323,29 @@ async function handleApi(request, env, url) {
   }
 
   // =======================================================
-  // CLIENTE - EVENTO
+  // CLIENTE
+  // EVENTO
   // =======================================================
 
-  match = path.match(
-    /^\/api\/client\/([^/]+)\/event$/
-  );
-
-  if (match && method === "GET") {
-    const token = decodeURIComponent(match[1]);
-
-    const event = await getEventByClientToken(
-      env,
-      token
+  match =
+    path.match(
+      /^\/api\/client\/([^/]+)\/event$/
     );
+
+  if (
+    match &&
+    method === "GET"
+  ) {
+    const token =
+      decodeURIComponent(
+        match[1]
+      );
+
+    const event =
+      await getEventByClientToken(
+        env,
+        token
+      );
 
     if (!event) {
       return json(
@@ -920,196 +1358,305 @@ async function handleApi(request, env, url) {
     }
 
     return json({
-      event: serializeEvent(event),
+      event:
+        serializeEvent(event),
 
-      summary: await getSummary(
-        env,
-        event.id
-      ),
+      summary:
+        await getSummary(
+          env,
+          event.id
+        ),
     });
   }
 
   // =======================================================
-  // CLIENTE - LISTAR / ADICIONAR
+  // CLIENTE
+  // LISTAR / ADICIONAR
   // =======================================================
 
-  match = path.match(
-    /^\/api\/client\/([^/]+)\/guests$/
-  );
-
-  if (match && method === "GET") {
-    const token = decodeURIComponent(match[1]);
-
-    const event = await getEventByClientToken(
-      env,
-      token
+  match =
+    path.match(
+      /^\/api\/client\/([^/]+)\/guests$/
     );
+
+  if (
+    match &&
+    method === "GET"
+  ) {
+    const token =
+      decodeURIComponent(
+        match[1]
+      );
+
+    const event =
+      await getEventByClientToken(
+        env,
+        token
+      );
 
     if (!event) {
       return json(
         {
-          error: "Acesso inválido.",
+          error:
+            "Acesso inválido.",
         },
         404
       );
     }
 
     return json({
-      guests: await listGuests(
-        env,
-        event.id,
-        url
-      ),
+      guests:
+        await listGuests(
+          env,
+          event.id,
+          url
+        ),
     });
   }
 
-  if (match && method === "POST") {
-    const token = decodeURIComponent(match[1]);
+  if (
+    match &&
+    method === "POST"
+  ) {
+    const token =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const event = await getEventByClientToken(
-      env,
-      token
-    );
+    const event =
+      await getEventByClientToken(
+        env,
+        token
+      );
 
     if (!event) {
       return json(
         {
-          error: "Acesso inválido.",
+          error:
+            "Acesso inválido.",
         },
         404
       );
     }
 
-    const body = await bodyJson(request);
+    const body =
+      await bodyJson(request);
+
+    const status =
+      allowedStatus(
+        body.response_status
+      );
+
+    const members =
+      status === "no"
+        ? []
+        : normalizeMembers(
+            body.members
+          );
+
+    validateMemberLimit(
+      event,
+      members,
+      status
+    );
 
     const duplicateMatches =
       await findDuplicateMembers(
         env,
         event.id,
-        normalizeMembers(body.members)
+        members
       );
 
-    const guest = await createGuest(
-      env,
-      event.id,
-      body,
-      "client"
-    );
+    const guest =
+      await createGuest(
+        env,
+        event.id,
+        body,
+        "client"
+      );
 
     await audit(env, {
       eventId: event.id,
       guestId: guest.id,
       actorRole: "client",
-      action: "guest_created",
+      action:
+        "guest_created",
+
       details: {
-        name: guest.primary_name,
+        name:
+          guest.primary_name,
       },
     });
 
     return json({
       guest,
+
       duplicate_matches:
         duplicateMatches,
     });
   }
 
   // =======================================================
-  // CLIENTE - EDITAR / EXCLUIR
+  // CLIENTE
+  // EDITAR / EXCLUIR
   // =======================================================
 
-  match = path.match(
-    /^\/api\/client\/([^/]+)\/guests\/([^/]+)$/
-  );
-
-  if (match && method === "PATCH") {
-    const token = decodeURIComponent(match[1]);
-    const guestId = decodeURIComponent(match[2]);
-
-    const event = await getEventByClientToken(
-      env,
-      token
+  match =
+    path.match(
+      /^\/api\/client\/([^/]+)\/guests\/([^/]+)$/
     );
+
+  if (
+    match &&
+    method === "PATCH"
+  ) {
+    const token =
+      decodeURIComponent(
+        match[1]
+      );
+
+    const guestId =
+      decodeURIComponent(
+        match[2]
+      );
+
+    const event =
+      await getEventByClientToken(
+        env,
+        token
+      );
 
     if (!event) {
       return json(
         {
-          error: "Acesso inválido.",
+          error:
+            "Acesso inválido.",
         },
         404
       );
     }
 
-    const body = await bodyJson(request);
+    const body =
+      await bodyJson(request);
+
+    const existing =
+      await getGuest(
+        env,
+        event.id,
+        guestId
+      );
+
+    if (!existing) {
+      return json(
+        {
+          error:
+            "Convidado não encontrado.",
+        },
+        404
+      );
+    }
+
+    const status =
+      allowedStatus(
+        body.response_status ??
+          existing.response_status
+      );
+
+    const members =
+      status === "no"
+        ? []
+        : body.members ===
+            undefined
+          ? existing.members
+          : normalizeMembers(
+              body.members
+            );
+
+    validateMemberLimit(
+      event,
+      members,
+      status
+    );
 
     const duplicateMatches =
       await findDuplicateMembers(
         env,
         event.id,
-        normalizeMembers(body.members),
+        members,
         guestId
       );
 
-    const guest = await updateGuest(
-      env,
-      event.id,
-      guestId,
-      body
-    );
-
-    if (!guest) {
-      return json(
-        {
-          error: "Convidado não encontrado.",
-        },
-        404
+    const guest =
+      await updateGuest(
+        env,
+        event.id,
+        guestId,
+        body
       );
-    }
 
     await audit(env, {
       eventId: event.id,
       guestId,
       actorRole: "client",
-      action: "guest_updated",
+      action:
+        "guest_updated",
+
       details: {
-        name: guest.primary_name,
+        name:
+          guest.primary_name,
       },
     });
 
     return json({
       guest,
+
       duplicate_matches:
         duplicateMatches,
     });
   }
 
-  if (match && method === "DELETE") {
-    const token = decodeURIComponent(match[1]);
-    const guestId = decodeURIComponent(match[2]);
+  if (
+    match &&
+    method === "DELETE"
+  ) {
+    const token =
+      decodeURIComponent(
+        match[1]
+      );
 
-    const event = await getEventByClientToken(
-      env,
-      token
-    );
+    const guestId =
+      decodeURIComponent(
+        match[2]
+      );
+
+    const event =
+      await getEventByClientToken(
+        env,
+        token
+      );
 
     if (!event) {
       return json(
         {
-          error: "Acesso inválido.",
+          error:
+            "Acesso inválido.",
         },
         404
       );
     }
 
-    const guest = await getGuest(
-      env,
-      event.id,
-      guestId
-    );
+    const guest =
+      await getGuest(
+        env,
+        event.id,
+        guestId
+      );
 
     if (!guest) {
       return json(
         {
-          error: "Convidado não encontrado.",
+          error:
+            "Convidado não encontrado.",
         },
         404
       );
@@ -1125,9 +1672,12 @@ async function handleApi(request, env, url) {
       eventId: event.id,
       guestId,
       actorRole: "client",
-      action: "guest_deleted",
+      action:
+        "guest_deleted",
+
       details: {
-        name: guest.primary_name,
+        name:
+          guest.primary_name,
       },
     });
 
@@ -1137,25 +1687,35 @@ async function handleApi(request, env, url) {
   }
 
   // =======================================================
-  // CLIENTE - EXPORTAR
+  // CLIENTE
+  // EXPORTAR
   // =======================================================
 
-  match = path.match(
-    /^\/api\/client\/([^/]+)\/export\.csv$/
-  );
-
-  if (match && method === "GET") {
-    const token = decodeURIComponent(match[1]);
-
-    const event = await getEventByClientToken(
-      env,
-      token
+  match =
+    path.match(
+      /^\/api\/client\/([^/]+)\/export\.csv$/
     );
+
+  if (
+    match &&
+    method === "GET"
+  ) {
+    const token =
+      decodeURIComponent(
+        match[1]
+      );
+
+    const event =
+      await getEventByClientToken(
+        env,
+        token
+      );
 
     if (!event) {
       return json(
         {
-          error: "Acesso inválido.",
+          error:
+            "Acesso inválido.",
         },
         404
       );
@@ -1172,20 +1732,29 @@ async function handleApi(request, env, url) {
   }
 
   // =======================================================
-  // PÚBLICO - EVENTO
+  // PÚBLICO
+  // EVENTO
   // =======================================================
 
-  match = path.match(
-    /^\/api\/public\/events\/([^/]+)$/
-  );
-
-  if (match && method === "GET") {
-    const slug = decodeURIComponent(match[1]);
-
-    const event = await getEventBySlug(
-      env,
-      slug
+  match =
+    path.match(
+      /^\/api\/public\/events\/([^/]+)$/
     );
+
+  if (
+    match &&
+    method === "GET"
+  ) {
+    const slug =
+      decodeURIComponent(
+        match[1]
+      );
+
+    const event =
+      await getEventBySlug(
+        env,
+        slug
+      );
 
     if (!event) {
       return json(
@@ -1198,13 +1767,19 @@ async function handleApi(request, env, url) {
     }
 
     const availability =
-      getRsvpAvailability(event);
+      getRsvpAvailability(
+        event
+      );
 
     return json({
       event: {
-        ...publicEvent(event),
+        ...publicEvent(
+          event
+        ),
+
         accepting_rsvp:
           availability.accepting,
+
         closed_reason:
           availability.reason,
       },
@@ -1212,34 +1787,48 @@ async function handleApi(request, env, url) {
   }
 
   // =======================================================
-  // PÚBLICO - BUSCAR NOME
+  // PÚBLICO
+  // BUSCAR NOME
   // =======================================================
 
-  match = path.match(
-    /^\/api\/public\/events\/([^/]+)\/lookup$/
-  );
-
-  if (match && method === "POST") {
-    const slug = decodeURIComponent(match[1]);
-
-    const event = await getEventBySlug(
-      env,
-      slug
+  match =
+    path.match(
+      /^\/api\/public\/events\/([^/]+)\/lookup$/
     );
+
+  if (
+    match &&
+    method === "POST"
+  ) {
+    const slug =
+      decodeURIComponent(
+        match[1]
+      );
+
+    const event =
+      await getEventBySlug(
+        env,
+        slug
+      );
 
     if (!event) {
       return json(
         {
-          error: "Evento indisponível.",
+          error:
+            "Evento indisponível.",
         },
         404
       );
     }
 
     const availability =
-      getRsvpAvailability(event);
+      getRsvpAvailability(
+        event
+      );
 
-    if (!availability.accepting) {
+    if (
+      !availability.accepting
+    ) {
       return json(
         {
           error:
@@ -1250,7 +1839,10 @@ async function handleApi(request, env, url) {
       );
     }
 
-    if (event.rsvp_mode !== "list") {
+    if (
+      event.rsvp_mode !==
+      "list"
+    ) {
       return json(
         {
           error:
@@ -1260,15 +1852,19 @@ async function handleApi(request, env, url) {
       );
     }
 
-    const body = await bodyJson(request);
+    const body =
+      await bodyJson(request);
 
     const normalized =
-      normalizeName(body.name || "");
+      normalizeName(
+        body.name || ""
+      );
 
     if (!normalized) {
       return json(
         {
-          error: "Digite seu nome.",
+          error:
+            "Digite seu nome.",
         },
         400
       );
@@ -1276,14 +1872,17 @@ async function handleApi(request, env, url) {
 
     const guestRow =
       await env.DB.prepare(`
-        SELECT DISTINCT g.*
+        SELECT DISTINCT
+          g.*
+
         FROM guests g
 
         LEFT JOIN guest_members gm
           ON gm.guest_id = g.id
           AND gm.deleted_at IS NULL
 
-        WHERE g.event_id = ?
+        WHERE
+          g.event_id = ?
           AND g.deleted_at IS NULL
 
           AND (
@@ -1291,7 +1890,8 @@ async function handleApi(request, env, url) {
             OR gm.normalized_name = ?
           )
 
-        ORDER BY g.created_at ASC
+        ORDER BY
+          g.created_at ASC
 
         LIMIT 1
       `)
@@ -1313,42 +1913,57 @@ async function handleApi(request, env, url) {
     }
 
     return json({
-      guest: await hydrateGuest(
-        env,
-        guestRow
-      ),
+      guest:
+        await hydrateGuest(
+          env,
+          guestRow
+        ),
     });
   }
 
   // =======================================================
-  // PÚBLICO - RSVP
+  // PÚBLICO
+  // RSVP
   // =======================================================
 
-  match = path.match(
-    /^\/api\/public\/events\/([^/]+)\/rsvp$/
-  );
-
-  if (match && method === "POST") {
-    const slug = decodeURIComponent(match[1]);
-
-    const event = await getEventBySlug(
-      env,
-      slug
+  match =
+    path.match(
+      /^\/api\/public\/events\/([^/]+)\/rsvp$/
     );
+
+  if (
+    match &&
+    method === "POST"
+  ) {
+    const slug =
+      decodeURIComponent(
+        match[1]
+      );
+
+    const event =
+      await getEventBySlug(
+        env,
+        slug
+      );
 
     if (!event) {
       return json(
         {
-          error: "Evento indisponível.",
+          error:
+            "Evento indisponível.",
         },
         404
       );
     }
 
     const availability =
-      getRsvpAvailability(event);
+      getRsvpAvailability(
+        event
+      );
 
-    if (!availability.accepting) {
+    if (
+      !availability.accepting
+    ) {
       return json(
         {
           error:
@@ -1359,11 +1974,17 @@ async function handleApi(request, env, url) {
       );
     }
 
-    const body = await bodyJson(request);
+    const body =
+      await bodyJson(request);
 
-    // Honeypot silencioso.
+    // =====================================================
+    // HONEYPOT INVISÍVEL
+    // =====================================================
+
     if (
-      String(body.website || "").trim()
+      String(
+        body.website || ""
+      ).trim()
     ) {
       return json({
         ok: true,
@@ -1376,8 +1997,10 @@ async function handleApi(request, env, url) {
       );
 
     if (
-      responseStatus !== "yes" &&
-      responseStatus !== "no"
+      responseStatus !==
+        "yes" &&
+      responseStatus !==
+        "no"
     ) {
       return json(
         {
@@ -1390,41 +2013,27 @@ async function handleApi(request, env, url) {
 
     const members =
       responseStatus === "yes"
-        ? normalizeMembers(body.members)
+        ? normalizeMembers(
+            body.members
+          )
         : [];
 
-    if (
-      responseStatus === "yes" &&
-      members.length === 0
-    ) {
-      return json(
-        {
-          error:
-            "Adicione pelo menos o nome de uma pessoa que irá à festa.",
-        },
-        400
-      );
-    }
-
-    if (
-      event.max_people_per_rsvp &&
-      members.length >
-        Number(
-          event.max_people_per_rsvp
-        )
-    ) {
-      return json(
-        {
-          error:
-            `Esta confirmação permite no máximo ${event.max_people_per_rsvp} pessoa(s).`,
-        },
-        400
-      );
-    }
+    validateMemberLimit(
+      event,
+      members,
+      responseStatus
+    );
 
     let guest;
 
-    if (event.rsvp_mode === "list") {
+    // =====================================================
+    // LISTA PRÉ-CADASTRADA
+    // =====================================================
+
+    if (
+      event.rsvp_mode ===
+      "list"
+    ) {
       if (!body.guest_id) {
         return json(
           {
@@ -1452,23 +2061,30 @@ async function handleApi(request, env, url) {
         );
       }
 
-      guest = await updateGuest(
-        env,
-        event.id,
-        existing.id,
-        {
-          ...body,
+      guest =
+        await updateGuest(
+          env,
+          event.id,
+          existing.id,
+          {
+            ...body,
 
-          primary_name:
-            existing.primary_name,
+            primary_name:
+              existing.primary_name,
 
-          response_status:
-            responseStatus,
+            response_status:
+              responseStatus,
 
-          members,
-        }
-      );
-    } else {
+            members,
+          }
+        );
+    }
+
+    // =====================================================
+    // CONFIRMAÇÃO LIVRE
+    // =====================================================
+
+    else {
       const primaryName =
         String(
           body.primary_name || ""
@@ -1477,25 +2093,32 @@ async function handleApi(request, env, url) {
       if (!primaryName) {
         return json(
           {
-            error: "Informe seu nome.",
+            error:
+              "Informe seu nome.",
           },
           400
         );
       }
 
       const normalized =
-        normalizeName(primaryName);
+        normalizeName(
+          primaryName
+        );
 
       const existingRow =
         await env.DB.prepare(`
           SELECT *
+
           FROM guests
 
-          WHERE event_id = ?
+          WHERE
+            event_id = ?
             AND normalized_name = ?
             AND deleted_at IS NULL
 
-          ORDER BY created_at ASC
+          ORDER BY
+            created_at ASC
+
           LIMIT 1
         `)
           .bind(
@@ -1505,33 +2128,35 @@ async function handleApi(request, env, url) {
           .first();
 
       if (existingRow) {
-        guest = await updateGuest(
-          env,
-          event.id,
-          existingRow.id,
-          {
-            ...body,
+        guest =
+          await updateGuest(
+            env,
+            event.id,
+            existingRow.id,
+            {
+              ...body,
 
-            response_status:
-              responseStatus,
+              response_status:
+                responseStatus,
 
-            members,
-          }
-        );
+              members,
+            }
+          );
       } else {
-        guest = await createGuest(
-          env,
-          event.id,
-          {
-            ...body,
+        guest =
+          await createGuest(
+            env,
+            event.id,
+            {
+              ...body,
 
-            response_status:
-              responseStatus,
+              response_status:
+                responseStatus,
 
-            members,
-          },
-          "public"
-        );
+              members,
+            },
+            "public"
+          );
       }
     }
 
@@ -1539,11 +2164,16 @@ async function handleApi(request, env, url) {
       eventId: event.id,
       guestId: guest.id,
       actorRole: "public",
-      action: "rsvp_submitted",
+      action:
+        "rsvp_submitted",
+
       details: {
-        name: guest.primary_name,
+        name:
+          guest.primary_name,
+
         response_status:
           guest.response_status,
+
         people:
           guest.members.length,
       },
@@ -1555,9 +2185,14 @@ async function handleApi(request, env, url) {
     });
   }
 
+  // =======================================================
+  // ROTA NÃO ENCONTRADA
+  // =======================================================
+
   return json(
     {
-      error: "Rota não encontrada.",
+      error:
+        "Rota não encontrada.",
     },
     404
   );
@@ -1567,20 +2202,29 @@ async function handleApi(request, env, url) {
 // EVENTOS
 // =========================================================
 
-async function createEvent(env, body) {
-  const id = crypto.randomUUID();
+async function createEvent(
+  env,
+  body
+) {
+  const id =
+    crypto.randomUUID();
 
-  const slug = await uniqueSlug(
-    env,
-    body.title
-  );
+  const slug =
+    await uniqueSlug(
+      env,
+      body.title
+    );
 
-  const clientToken = randomToken();
-  const createdAt = now();
+  const clientToken =
+    randomToken();
+
+  const createdAt =
+    now();
 
   const extraFields =
     normalizeExtraFields(
-      body.extra_fields || {}
+      body.extra_fields ||
+        {}
     );
 
   const maxPeople =
@@ -1588,6 +2232,11 @@ async function createEvent(env, body) {
       body.max_people_per_rsvp,
       1,
       100
+    );
+
+  const backgroundImage =
+    normalizeOptionalUrl(
+      body.background_image_url
     );
 
   await env.DB.prepare(`
@@ -1613,17 +2262,32 @@ async function createEvent(env, body) {
     )
 
     VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
       'active',
-      ?, ?,
+      ?,
+      ?,
       NULL,
-      ?, ?
+      ?,
+      ?
     )
   `)
     .bind(
       id,
 
-      String(body.title).trim(),
+      String(
+        body.title
+      ).trim(),
 
       slug,
 
@@ -1635,7 +2299,8 @@ async function createEvent(env, body) {
         body.event_time
       ),
 
-      body.rsvp_mode === "list"
+      body.rsvp_mode ===
+      "list"
         ? "list"
         : "free",
 
@@ -1653,9 +2318,7 @@ async function createEvent(env, body) {
         "#f4e8ed"
       ),
 
-      cleanNullable(
-        body.background_image_url
-      ),
+      backgroundImage,
 
       JSON.stringify(
         extraFields
@@ -1676,9 +2339,17 @@ async function createEvent(env, body) {
     .run();
 
   return serializeEvent(
-    await getEvent(env, id)
+    await getEvent(
+      env,
+      id
+    )
   );
 }
+
+// =========================================================
+// LISTAR EVENTOS
+// CORRIGIDO PARA NÃO DUPLICAR CONFIRMAÇÕES
+// =========================================================
 
 async function getEventsWithSummary(
   env,
@@ -1689,77 +2360,109 @@ async function getEventsWithSummary(
       SELECT
         e.*,
 
-        SUM(
-          CASE
-            WHEN g.response_status = 'yes'
-            THEN 1
-            ELSE 0
-          END
-        ) AS yes_responses,
+        (
+          SELECT COUNT(*)
 
-        SUM(
-          CASE
-            WHEN g.response_status = 'no'
-            THEN 1
-            ELSE 0
-          END
-        ) AS no_responses,
+          FROM guests g
 
-        SUM(
-          CASE
-            WHEN g.response_status = 'pending'
-            THEN 1
-            ELSE 0
-          END
-        ) AS pending_responses,
+          WHERE
+            g.event_id = e.id
+            AND g.deleted_at IS NULL
+            AND g.response_status = 'yes'
+        )
+        AS yes_responses,
 
-        COUNT(
-          DISTINCT CASE
-            WHEN g.response_status = 'yes'
-            THEN gm.id
-          END
-        ) AS people_confirmed,
+        (
+          SELECT COUNT(*)
 
-        COUNT(
-          DISTINCT CASE
-            WHEN g.response_status = 'yes'
-              AND gm.person_type = 'adult'
-            THEN gm.id
-          END
-        ) AS adults_confirmed,
+          FROM guests g
 
-        COUNT(
-          DISTINCT CASE
-            WHEN g.response_status = 'yes'
-              AND gm.person_type = 'child'
-            THEN gm.id
-          END
-        ) AS children_confirmed
+          WHERE
+            g.event_id = e.id
+            AND g.deleted_at IS NULL
+            AND g.response_status = 'no'
+        )
+        AS no_responses,
+
+        (
+          SELECT COUNT(*)
+
+          FROM guests g
+
+          WHERE
+            g.event_id = e.id
+            AND g.deleted_at IS NULL
+            AND g.response_status = 'pending'
+        )
+        AS pending_responses,
+
+        (
+          SELECT COUNT(*)
+
+          FROM guest_members gm
+
+          INNER JOIN guests g
+            ON g.id = gm.guest_id
+
+          WHERE
+            gm.event_id = e.id
+            AND gm.deleted_at IS NULL
+            AND g.deleted_at IS NULL
+            AND g.response_status = 'yes'
+        )
+        AS people_confirmed,
+
+        (
+          SELECT COUNT(*)
+
+          FROM guest_members gm
+
+          INNER JOIN guests g
+            ON g.id = gm.guest_id
+
+          WHERE
+            gm.event_id = e.id
+            AND gm.deleted_at IS NULL
+            AND g.deleted_at IS NULL
+            AND g.response_status = 'yes'
+            AND gm.person_type = 'adult'
+        )
+        AS adults_confirmed,
+
+        (
+          SELECT COUNT(*)
+
+          FROM guest_members gm
+
+          INNER JOIN guests g
+            ON g.id = gm.guest_id
+
+          WHERE
+            gm.event_id = e.id
+            AND gm.deleted_at IS NULL
+            AND g.deleted_at IS NULL
+            AND g.response_status = 'yes'
+            AND gm.person_type = 'child'
+        )
+        AS children_confirmed
 
       FROM events e
-
-      LEFT JOIN guests g
-        ON g.event_id = e.id
-        AND g.deleted_at IS NULL
-
-      LEFT JOIN guest_members gm
-        ON gm.guest_id = g.id
-        AND gm.deleted_at IS NULL
 
       WHERE
         (
           ? = 1
           AND e.archived_at IS NOT NULL
         )
+
         OR
+
         (
           ? = 0
           AND e.archived_at IS NULL
         )
 
-      GROUP BY e.id
-
       ORDER BY
+
         CASE
           WHEN e.status = 'active'
           THEN 0
@@ -1785,42 +2488,58 @@ async function getEventsWithSummary(
 
       yes_responses:
         Number(
-          row.yes_responses || 0
+          row.yes_responses ||
+            0
         ),
 
       no_responses:
         Number(
-          row.no_responses || 0
+          row.no_responses ||
+            0
         ),
 
       pending_responses:
         Number(
-          row.pending_responses || 0
+          row.pending_responses ||
+            0
         ),
 
       people_confirmed:
         Number(
-          row.people_confirmed || 0
+          row.people_confirmed ||
+            0
         ),
 
       adults_confirmed:
         Number(
-          row.adults_confirmed || 0
+          row.adults_confirmed ||
+            0
         ),
 
       children_confirmed:
         Number(
-          row.children_confirmed || 0
+          row.children_confirmed ||
+            0
         ),
     })
   );
 }
 
-async function getEvent(env, id) {
+// =========================================================
+// BUSCAR EVENTO
+// =========================================================
+
+async function getEvent(
+  env,
+  id
+) {
   return env.DB.prepare(`
     SELECT *
+
     FROM events
+
     WHERE id = ?
+
     LIMIT 1
   `)
     .bind(id)
@@ -1833,8 +2552,11 @@ async function getEventBySlug(
 ) {
   return env.DB.prepare(`
     SELECT *
+
     FROM events
+
     WHERE slug = ?
+
     LIMIT 1
   `)
     .bind(slug)
@@ -1851,13 +2573,20 @@ async function getEventByClientToken(
 
   return env.DB.prepare(`
     SELECT *
+
     FROM events
+
     WHERE client_token = ?
+
     LIMIT 1
   `)
     .bind(token)
     .first();
 }
+
+// =========================================================
+// RESUMO
+// =========================================================
 
 async function getSummary(
   env,
@@ -1873,7 +2602,8 @@ async function getSummary(
             THEN 1
             ELSE 0
           END
-        ) AS yes_responses,
+        )
+        AS yes_responses,
 
         SUM(
           CASE
@@ -1881,7 +2611,8 @@ async function getSummary(
             THEN 1
             ELSE 0
           END
-        ) AS no_responses,
+        )
+        AS no_responses,
 
         SUM(
           CASE
@@ -1889,11 +2620,13 @@ async function getSummary(
             THEN 1
             ELSE 0
           END
-        ) AS pending_responses
+        )
+        AS pending_responses
 
       FROM guests
 
-      WHERE event_id = ?
+      WHERE
+        event_id = ?
         AND deleted_at IS NULL
     `)
       .bind(eventId)
@@ -1903,7 +2636,8 @@ async function getSummary(
     await env.DB.prepare(`
       SELECT
 
-        COUNT(*) AS people_confirmed,
+        COUNT(*)
+        AS people_confirmed,
 
         SUM(
           CASE
@@ -1911,7 +2645,8 @@ async function getSummary(
             THEN 1
             ELSE 0
           END
-        ) AS adults_confirmed,
+        )
+        AS adults_confirmed,
 
         SUM(
           CASE
@@ -1919,14 +2654,16 @@ async function getSummary(
             THEN 1
             ELSE 0
           END
-        ) AS children_confirmed
+        )
+        AS children_confirmed
 
       FROM guest_members gm
 
       INNER JOIN guests g
         ON g.id = gm.guest_id
 
-      WHERE gm.event_id = ?
+      WHERE
+        gm.event_id = ?
         AND gm.deleted_at IS NULL
         AND g.deleted_at IS NULL
         AND g.response_status = 'yes'
@@ -1937,48 +2674,67 @@ async function getSummary(
   return {
     yes_responses:
       Number(
-        guestRow?.yes_responses || 0
+        guestRow?.yes_responses ||
+          0
       ),
 
     no_responses:
       Number(
-        guestRow?.no_responses || 0
+        guestRow?.no_responses ||
+          0
       ),
 
     pending_responses:
       Number(
-        guestRow?.pending_responses || 0
+        guestRow?.pending_responses ||
+          0
       ),
 
     people_confirmed:
       Number(
-        memberRow?.people_confirmed || 0
+        memberRow?.people_confirmed ||
+          0
       ),
 
     adults_confirmed:
       Number(
-        memberRow?.adults_confirmed || 0
+        memberRow?.adults_confirmed ||
+          0
       ),
 
     children_confirmed:
       Number(
-        memberRow?.children_confirmed || 0
+        memberRow?.children_confirmed ||
+          0
       ),
   };
 }
 
-function getRsvpAvailability(event) {
-  if (event.archived_at) {
+// =========================================================
+// DISPONIBILIDADE DO RSVP
+// =========================================================
+
+function getRsvpAvailability(
+  event
+) {
+  if (
+    event.archived_at
+  ) {
     return {
       accepting: false,
+
       reason:
         "As confirmações deste evento estão encerradas.",
     };
   }
 
-  if (event.status !== "active") {
+  if (
+    event.status !==
+    "active"
+  ) {
     return {
       accepting: false,
+
       reason:
         "As confirmações estão temporariamente pausadas.",
     };
@@ -1992,6 +2748,7 @@ function getRsvpAvailability(event) {
   ) {
     return {
       accepting: false,
+
       reason:
         "O prazo para confirmação de presença foi encerrado.",
     };
@@ -2014,14 +2771,19 @@ async function listGuests(
 ) {
   const q =
     normalizeName(
-      url.searchParams.get("q") || ""
+      url.searchParams.get(
+        "q"
+      ) || ""
     );
 
   const status =
-    url.searchParams.get("status") || "";
+    url.searchParams.get(
+      "status"
+    ) || "";
 
   let sql = `
-    SELECT DISTINCT g.*
+    SELECT DISTINCT
+      g.*
 
     FROM guests g
 
@@ -2029,11 +2791,14 @@ async function listGuests(
       ON gm.guest_id = g.id
       AND gm.deleted_at IS NULL
 
-    WHERE g.event_id = ?
+    WHERE
+      g.event_id = ?
       AND g.deleted_at IS NULL
   `;
 
-  const bindings = [eventId];
+  const bindings = [
+    eventId,
+  ];
 
   if (q) {
     sql += `
@@ -2050,32 +2815,47 @@ async function listGuests(
   }
 
   if (
-    ["yes", "no", "pending"].includes(
-      status
-    )
+    [
+      "yes",
+      "no",
+      "pending",
+    ].includes(status)
   ) {
     sql += `
       AND g.response_status = ?
     `;
 
-    bindings.push(status);
+    bindings.push(
+      status
+    );
   }
 
   sql += `
     ORDER BY
 
-      CASE g.response_status
-        WHEN 'yes' THEN 0
-        WHEN 'pending' THEN 1
+      CASE
+        g.response_status
+
+        WHEN 'yes'
+        THEN 0
+
+        WHEN 'pending'
+        THEN 1
+
         ELSE 2
       END,
 
-      g.primary_name COLLATE NOCASE ASC
+      g.primary_name
+        COLLATE NOCASE ASC
   `;
 
   const result =
-    await env.DB.prepare(sql)
-      .bind(...bindings)
+    await env.DB.prepare(
+      sql
+    )
+      .bind(
+        ...bindings
+      )
       .all();
 
   return hydrateGuests(
@@ -2084,6 +2864,10 @@ async function listGuests(
   );
 }
 
+// =========================================================
+// LISTA BRUTA
+// =========================================================
+
 async function listGuestsRaw(
   env,
   eventId
@@ -2091,13 +2875,16 @@ async function listGuestsRaw(
   const result =
     await env.DB.prepare(`
       SELECT *
+
       FROM guests
 
-      WHERE event_id = ?
+      WHERE
+        event_id = ?
         AND deleted_at IS NULL
 
       ORDER BY
-        primary_name COLLATE NOCASE ASC
+        primary_name
+        COLLATE NOCASE ASC
     `)
       .bind(eventId)
       .all();
@@ -2108,6 +2895,10 @@ async function listGuestsRaw(
   );
 }
 
+// =========================================================
+// LIXEIRA
+// =========================================================
+
 async function listDeletedGuests(
   env,
   eventId
@@ -2115,12 +2906,15 @@ async function listDeletedGuests(
   const result =
     await env.DB.prepare(`
       SELECT *
+
       FROM guests
 
-      WHERE event_id = ?
+      WHERE
+        event_id = ?
         AND deleted_at IS NOT NULL
 
-      ORDER BY deleted_at DESC
+      ORDER BY
+        deleted_at DESC
     `)
       .bind(eventId)
       .all();
@@ -2139,9 +2933,11 @@ async function getDeletedGuestRow(
 ) {
   return env.DB.prepare(`
     SELECT *
+
     FROM guests
 
-    WHERE id = ?
+    WHERE
+      id = ?
       AND event_id = ?
       AND deleted_at IS NOT NULL
 
@@ -2154,6 +2950,10 @@ async function getDeletedGuestRow(
     .first();
 }
 
+// =========================================================
+// BUSCAR CONVIDADO
+// =========================================================
+
 async function getGuest(
   env,
   eventId,
@@ -2162,9 +2962,11 @@ async function getGuest(
   const row =
     await env.DB.prepare(`
       SELECT *
+
       FROM guests
 
-      WHERE id = ?
+      WHERE
+        id = ?
         AND event_id = ?
         AND deleted_at IS NULL
 
@@ -2186,15 +2988,33 @@ async function getGuest(
   );
 }
 
+// =========================================================
+// CRIAR CONVIDADO
+// =========================================================
+
 async function createGuest(
   env,
   eventId,
   body,
   source
 ) {
+  const event =
+    await getEvent(
+      env,
+      eventId
+    );
+
+  if (!event) {
+    throw new HttpError(
+      404,
+      "Evento não encontrado."
+    );
+  }
+
   const primaryName =
     String(
-      body.primary_name || ""
+      body.primary_name ||
+        ""
     ).trim();
 
   if (!primaryName) {
@@ -2204,7 +3024,18 @@ async function createGuest(
     );
   }
 
-  const id = crypto.randomUUID();
+  if (
+    primaryName.length >
+    150
+  ) {
+    throw new HttpError(
+      400,
+      "O nome informado é muito longo."
+    );
+  }
+
+  const id =
+    crypto.randomUUID();
 
   const status =
     allowedStatus(
@@ -2218,7 +3049,14 @@ async function createGuest(
           body.members
         );
 
-  const createdAt = now();
+  validateMemberLimit(
+    event,
+    members,
+    status
+  );
+
+  const createdAt =
+    now();
 
   await env.DB.prepare(`
     INSERT INTO guests (
@@ -2241,7 +3079,22 @@ async function createGuest(
     )
 
     VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      NULL
     )
   `)
     .bind(
@@ -2257,8 +3110,9 @@ async function createGuest(
 
       status,
 
-      cleanNullable(
-        body.phone
+      cleanOptionalText(
+        body.phone,
+        80
       ),
 
       countMembers(
@@ -2278,16 +3132,19 @@ async function createGuest(
         )
       ),
 
-      cleanNullable(
-        body.dietary
+      cleanOptionalText(
+        body.dietary,
+        500
       ),
 
-      cleanNullable(
-        body.notes
+      cleanOptionalText(
+        body.notes,
+        2000
       ),
 
-      cleanNullable(
-        body.love_message
+      cleanOptionalText(
+        body.love_message,
+        3000
       ),
 
       source,
@@ -2312,12 +3169,29 @@ async function createGuest(
   );
 }
 
+// =========================================================
+// EDITAR CONVIDADO
+// =========================================================
+
 async function updateGuest(
   env,
   eventId,
   guestId,
   body
 ) {
+  const event =
+    await getEvent(
+      env,
+      eventId
+    );
+
+  if (!event) {
+    throw new HttpError(
+      404,
+      "Evento não encontrado."
+    );
+  }
+
   const existing =
     await getGuest(
       env,
@@ -2342,6 +3216,16 @@ async function updateGuest(
     );
   }
 
+  if (
+    primaryName.length >
+    150
+  ) {
+    throw new HttpError(
+      400,
+      "O nome informado é muito longo."
+    );
+  }
+
   const status =
     allowedStatus(
       body.response_status ??
@@ -2351,11 +3235,18 @@ async function updateGuest(
   const members =
     status === "no"
       ? []
-      : body.members === undefined
+      : body.members ===
+          undefined
         ? existing.members
         : normalizeMembers(
             body.members
           );
+
+  validateMemberLimit(
+    event,
+    members,
+    status
+  );
 
   await env.DB.prepare(`
     UPDATE guests
@@ -2373,7 +3264,8 @@ async function updateGuest(
       love_message = ?,
       updated_at = ?
 
-    WHERE id = ?
+    WHERE
+      id = ?
       AND event_id = ?
       AND deleted_at IS NULL
   `)
@@ -2386,10 +3278,12 @@ async function updateGuest(
 
       status,
 
-      cleanNullable(
-        body.phone !== undefined
+      cleanOptionalText(
+        body.phone !==
+          undefined
           ? body.phone
-          : existing.phone
+          : existing.phone,
+        80
       ),
 
       countMembers(
@@ -2409,22 +3303,28 @@ async function updateGuest(
         )
       ),
 
-      cleanNullable(
-        body.dietary !== undefined
+      cleanOptionalText(
+        body.dietary !==
+          undefined
           ? body.dietary
-          : existing.dietary
+          : existing.dietary,
+        500
       ),
 
-      cleanNullable(
-        body.notes !== undefined
+      cleanOptionalText(
+        body.notes !==
+          undefined
           ? body.notes
-          : existing.notes
+          : existing.notes,
+        2000
       ),
 
-      cleanNullable(
-        body.love_message !== undefined
+      cleanOptionalText(
+        body.love_message !==
+          undefined
           ? body.love_message
-          : existing.love_message
+          : existing.love_message,
+        3000
       ),
 
       now(),
@@ -2449,6 +3349,10 @@ async function updateGuest(
   );
 }
 
+// =========================================================
+// SUBSTITUIR MEMBROS
+// =========================================================
+
 async function replaceGuestMembers(
   env,
   eventId,
@@ -2457,20 +3361,27 @@ async function replaceGuestMembers(
 ) {
   await env.DB.prepare(`
     DELETE FROM guest_members
+
     WHERE guest_id = ?
   `)
-    .bind(guestId)
+    .bind(
+      guestId
+    )
     .run();
 
   if (!members.length) {
     return;
   }
 
-  const createdAt = now();
+  const createdAt =
+    now();
 
   const statements =
     members.map(
-      (member, index) =>
+      (
+        member,
+        index
+      ) =>
         env.DB.prepare(`
           INSERT INTO guest_members (
             id,
@@ -2487,33 +3398,44 @@ async function replaceGuestMembers(
           )
 
           VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            NULL
           )
-        `).bind(
-          crypto.randomUUID(),
+        `)
+          .bind(
+            crypto.randomUUID(),
 
-          guestId,
+            guestId,
 
-          eventId,
+            eventId,
 
-          member.name,
+            member.name,
 
-          normalizeName(
-            member.name
-          ),
+            normalizeName(
+              member.name
+            ),
 
-          member.person_type,
+            member.person_type,
 
-          index === 0
-            ? 1
-            : 0,
+            index === 0
+              ? 1
+              : 0,
 
-          index,
+            index,
 
-          createdAt,
+            createdAt,
 
-          createdAt
-        )
+            createdAt
+          )
     );
 
   await env.DB.batch(
@@ -2521,12 +3443,17 @@ async function replaceGuestMembers(
   );
 }
 
+// =========================================================
+// EXCLUIR CONVIDADO
+// =========================================================
+
 async function softDeleteGuest(
   env,
   eventId,
   guestId
 ) {
-  const currentTime = now();
+  const currentTime =
+    now();
 
   await env.DB.batch([
     env.DB.prepare(`
@@ -2536,15 +3463,17 @@ async function softDeleteGuest(
         deleted_at = ?,
         updated_at = ?
 
-      WHERE id = ?
+      WHERE
+        id = ?
         AND event_id = ?
         AND deleted_at IS NULL
-    `).bind(
-      currentTime,
-      currentTime,
-      guestId,
-      eventId
-    ),
+    `)
+      .bind(
+        currentTime,
+        currentTime,
+        guestId,
+        eventId
+      ),
 
     env.DB.prepare(`
       UPDATE guest_members
@@ -2553,24 +3482,31 @@ async function softDeleteGuest(
         deleted_at = ?,
         updated_at = ?
 
-      WHERE guest_id = ?
+      WHERE
+        guest_id = ?
         AND event_id = ?
         AND deleted_at IS NULL
-    `).bind(
-      currentTime,
-      currentTime,
-      guestId,
-      eventId
-    ),
+    `)
+      .bind(
+        currentTime,
+        currentTime,
+        guestId,
+        eventId
+      ),
   ]);
 }
+
+// =========================================================
+// RESTAURAR CONVIDADO
+// =========================================================
 
 async function restoreGuest(
   env,
   eventId,
   guestId
 ) {
-  const currentTime = now();
+  const currentTime =
+    now();
 
   await env.DB.batch([
     env.DB.prepare(`
@@ -2580,13 +3516,15 @@ async function restoreGuest(
         deleted_at = NULL,
         updated_at = ?
 
-      WHERE id = ?
+      WHERE
+        id = ?
         AND event_id = ?
-    `).bind(
-      currentTime,
-      guestId,
-      eventId
-    ),
+    `)
+      .bind(
+        currentTime,
+        guestId,
+        eventId
+      ),
 
     env.DB.prepare(`
       UPDATE guest_members
@@ -2595,18 +3533,20 @@ async function restoreGuest(
         deleted_at = NULL,
         updated_at = ?
 
-      WHERE guest_id = ?
+      WHERE
+        guest_id = ?
         AND event_id = ?
-    `).bind(
-      currentTime,
-      guestId,
-      eventId
-    ),
+    `)
+      .bind(
+        currentTime,
+        guestId,
+        eventId
+      ),
   ]);
 }
 
 // =========================================================
-// MEMBROS
+// HIDRATAR CONVIDADOS
 // =========================================================
 
 async function hydrateGuests(
@@ -2618,33 +3558,58 @@ async function hydrateGuests(
     return [];
   }
 
-  const eventId =
-    rows[0].event_id;
+  const eventIds = [
+    ...new Set(
+      rows.map(
+        (row) =>
+          row.event_id
+      )
+    ),
+  ];
+
+  const placeholders =
+    eventIds
+      .map(() => "?")
+      .join(",");
 
   const result =
     await env.DB.prepare(`
       SELECT *
+
       FROM guest_members
 
-      WHERE event_id = ?
+      WHERE
+        event_id IN (
+          ${placeholders}
+        )
 
-      ${
-        includeDeleted
-          ? ""
-          : "AND deleted_at IS NULL"
-      }
+        ${
+          includeDeleted
+            ? ""
+            : "AND deleted_at IS NULL"
+        }
 
       ORDER BY
         sort_order ASC,
         name COLLATE NOCASE ASC
     `)
-      .bind(eventId)
+      .bind(
+        ...eventIds
+      )
       .all();
 
-  const map = new Map();
+  const map =
+    new Map();
 
-  for (const member of result.results) {
-    if (!map.has(member.guest_id)) {
+  for (
+    const member
+    of result.results
+  ) {
+    if (
+      !map.has(
+        member.guest_id
+      )
+    ) {
       map.set(
         member.guest_id,
         []
@@ -2652,7 +3617,9 @@ async function hydrateGuests(
     }
 
     map
-      .get(member.guest_id)
+      .get(
+        member.guest_id
+      )
       .push(
         serializeMember(
           member
@@ -2664,10 +3631,16 @@ async function hydrateGuests(
     (row) =>
       serializeGuestRow(
         row,
-        map.get(row.id) || []
+        map.get(
+          row.id
+        ) || []
       )
   );
 }
+
+// =========================================================
+// HIDRATAR UM CONVIDADO
+// =========================================================
 
 async function hydrateGuest(
   env,
@@ -2676,16 +3649,20 @@ async function hydrateGuest(
   const result =
     await env.DB.prepare(`
       SELECT *
+
       FROM guest_members
 
-      WHERE guest_id = ?
+      WHERE
+        guest_id = ?
         AND deleted_at IS NULL
 
       ORDER BY
         sort_order ASC,
         name COLLATE NOCASE ASC
     `)
-      .bind(row.id)
+      .bind(
+        row.id
+      )
       .all();
 
   return serializeGuestRow(
@@ -2695,6 +3672,10 @@ async function hydrateGuest(
     )
   );
 }
+
+// =========================================================
+// DUPLICIDADES
+// =========================================================
 
 async function findDuplicateMembers(
   env,
@@ -2719,7 +3700,9 @@ async function findDuplicateMembers(
     ),
   ];
 
-  if (!normalizedNames.length) {
+  if (
+    !normalizedNames.length
+  ) {
     return [];
   }
 
@@ -2740,10 +3723,12 @@ async function findDuplicateMembers(
     INNER JOIN guests g
       ON g.id = gm.guest_id
 
-    WHERE gm.event_id = ?
+    WHERE
+      gm.event_id = ?
       AND gm.deleted_at IS NULL
       AND g.deleted_at IS NULL
-      AND gm.normalized_name IN (${placeholders})
+      AND gm.normalized_name
+        IN (${placeholders})
   `;
 
   const bindings = [
@@ -2751,7 +3736,9 @@ async function findDuplicateMembers(
     ...normalizedNames,
   ];
 
-  if (excludeGuestId) {
+  if (
+    excludeGuestId
+  ) {
     sql += `
       AND gm.guest_id != ?
     `;
@@ -2762,14 +3749,22 @@ async function findDuplicateMembers(
   }
 
   const result =
-    await env.DB.prepare(sql)
-      .bind(...bindings)
+    await env.DB.prepare(
+      sql
+    )
+      .bind(
+        ...bindings
+      )
       .all();
 
   return result.results.map(
     (row) => ({
-      name: row.name,
-      guest_id: row.guest_id,
+      name:
+        row.name,
+
+      guest_id:
+        row.guest_id,
+
       confirmation_name:
         row.primary_name,
     })
@@ -2803,7 +3798,13 @@ async function audit(
       )
 
       VALUES (
-        ?, ?, ?, ?, ?, ?, ?
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?
       )
     `)
       .bind(
@@ -2818,7 +3819,9 @@ async function audit(
         action,
 
         details
-          ? JSON.stringify(details)
+          ? JSON.stringify(
+              details
+            )
           : null,
 
         now()
@@ -2840,8 +3843,13 @@ async function createAdminSession(
   env
 ) {
   const expires =
-    Math.floor(Date.now() / 1000) +
-    60 * 60 * 24;
+    Math.floor(
+      Date.now() /
+      1000
+    ) +
+    60 *
+      60 *
+      24;
 
   const payload =
     `admin.${expires}`;
@@ -2869,7 +3877,9 @@ async function isAdmin(
   request,
   env
 ) {
-  if (!env.SESSION_SECRET) {
+  if (
+    !env.SESSION_SECRET
+  ) {
     return false;
   }
 
@@ -2890,19 +3900,33 @@ async function isAdmin(
   const parts =
     token.split(".");
 
-  if (parts.length !== 3) {
+  if (
+    parts.length !== 3
+  ) {
     return false;
   }
 
-  const role = parts[0];
-  const expires = Number(parts[1]);
-  const signature = parts[2];
+  const role =
+    parts[0];
+
+  const expires =
+    Number(
+      parts[1]
+    );
+
+  const signature =
+    parts[2];
 
   if (
     role !== "admin" ||
-    !Number.isFinite(expires) ||
+    !Number.isFinite(
+      expires
+    ) ||
     expires <
-      Math.floor(Date.now() / 1000)
+      Math.floor(
+        Date.now() /
+        1000
+      )
   ) {
     return false;
   }
@@ -2918,6 +3942,10 @@ async function isAdmin(
     expected
   );
 }
+
+// =========================================================
+// ASSINATURA
+// =========================================================
 
 async function sign(
   value,
@@ -2973,7 +4001,7 @@ function csvResponse(
       "Status",
       "Adultos",
       "Crianças",
-      "Pessoas confirmadas",
+      "Total de pessoas",
       "Telefone",
       "Restrição alimentar",
       "Observações",
@@ -2982,7 +4010,10 @@ function csvResponse(
     ],
   ];
 
-  for (const guest of guests) {
+  for (
+    const guest
+    of guests
+  ) {
     const adults =
       guest.members
         .filter(
@@ -3044,28 +4075,36 @@ function csvResponse(
       .map(
         (row) =>
           row
-            .map(csvCell)
+            .map(
+              csvCell
+            )
             .join(";")
       )
       .join("\r\n");
 
-  return new Response(csv, {
-    headers: {
-      "content-type":
-        "text/csv; charset=utf-8",
+  return new Response(
+    csv,
+    {
+      headers: {
+        "content-type":
+          "text/csv; charset=utf-8",
 
-      "content-disposition":
-        `attachment; filename="${filename}"`,
+        "content-disposition":
+          `attachment; filename="${filename}"`,
 
-      "cache-control":
-        "no-store",
-    },
-  });
+        "cache-control":
+          "no-store",
+      },
+    }
+  );
 }
 
 function csvCell(value) {
   const text =
-    String(value ?? "");
+    String(
+      value ??
+        ""
+    );
 
   return `"${text.replace(
     /"/g,
@@ -3074,35 +4113,46 @@ function csvCell(value) {
 }
 
 // =========================================================
-// SERIALIZAÇÃO
+// SERIALIZAR EVENTO
 // =========================================================
 
-function serializeEvent(row) {
+function serializeEvent(
+  row
+) {
   if (!row) {
     return null;
   }
 
   const availability =
-    getRsvpAvailability(row);
+    getRsvpAvailability(
+      row
+    );
 
   return {
-    id: row.id,
+    id:
+      row.id,
 
-    title: row.title,
+    title:
+      row.title,
 
-    slug: row.slug,
+    slug:
+      row.slug,
 
     event_date:
-      row.event_date || null,
+      row.event_date ||
+      null,
 
     event_time:
-      row.event_time || null,
+      row.event_time ||
+      null,
 
     rsvp_mode:
-      row.rsvp_mode || "free",
+      row.rsvp_mode ||
+      "free",
 
     welcome_message:
-      row.welcome_message || "",
+      row.welcome_message ||
+      "",
 
     primary_color:
       row.primary_color ||
@@ -3123,10 +4173,12 @@ function serializeEvent(row) {
       ),
 
     status:
-      row.status || "active",
+      row.status ||
+      "active",
 
     rsvp_deadline:
-      row.rsvp_deadline || null,
+      row.rsvp_deadline ||
+      null,
 
     max_people_per_rsvp:
       row.max_people_per_rsvp ===
@@ -3139,7 +4191,8 @@ function serializeEvent(row) {
           ),
 
     archived_at:
-      row.archived_at || null,
+      row.archived_at ||
+      null,
 
     accepting_rsvp:
       availability.accepting,
@@ -3155,16 +4208,27 @@ function serializeEvent(row) {
   };
 }
 
-function publicEvent(row) {
+// =========================================================
+// EVENTO PÚBLICO
+// =========================================================
+
+function publicEvent(
+  row
+) {
   const event =
-    serializeEvent(row);
+    serializeEvent(
+      row
+    );
 
   return {
-    id: event.id,
+    id:
+      event.id,
 
-    title: event.title,
+    title:
+      event.title,
 
-    slug: event.slug,
+    slug:
+      event.slug,
 
     event_date:
       event.event_date,
@@ -3204,12 +4268,17 @@ function publicEvent(row) {
   };
 }
 
+// =========================================================
+// SERIALIZAR CONVIDADO
+// =========================================================
+
 function serializeGuestRow(
   row,
   members
 ) {
   return {
-    id: row.id,
+    id:
+      row.id,
 
     event_id:
       row.event_id,
@@ -3222,7 +4291,8 @@ function serializeGuestRow(
       "pending",
 
     phone:
-      row.phone || "",
+      row.phone ||
+      "",
 
     members,
 
@@ -3244,16 +4314,20 @@ function serializeGuestRow(
       members.length,
 
     dietary:
-      row.dietary || "",
+      row.dietary ||
+      "",
 
     notes:
-      row.notes || "",
+      row.notes ||
+      "",
 
     love_message:
-      row.love_message || "",
+      row.love_message ||
+      "",
 
     source:
-      row.source || "",
+      row.source ||
+      "",
 
     created_at:
       row.created_at,
@@ -3262,40 +4336,61 @@ function serializeGuestRow(
       row.updated_at,
 
     deleted_at:
-      row.deleted_at || null,
+      row.deleted_at ||
+      null,
   };
 }
 
-function serializeMember(row) {
-  return {
-    id: row.id,
+// =========================================================
+// SERIALIZAR MEMBRO
+// =========================================================
 
-    name: row.name,
+function serializeMember(
+  row
+) {
+  return {
+    id:
+      row.id,
+
+    name:
+      row.name,
 
     person_type:
-      row.person_type === "child"
+      row.person_type ===
+      "child"
         ? "child"
         : "adult",
 
     is_primary:
-      Boolean(row.is_primary),
+      Boolean(
+        row.is_primary
+      ),
 
     sort_order:
       Number(
-        row.sort_order || 0
+        row.sort_order ||
+        0
       ),
   };
 }
 
-function serializeAudit(row) {
+// =========================================================
+// SERIALIZAR AUDITORIA
+// =========================================================
+
+function serializeAudit(
+  row
+) {
   return {
-    id: row.id,
+    id:
+      row.id,
 
     event_id:
       row.event_id,
 
     guest_id:
-      row.guest_id || null,
+      row.guest_id ||
+      null,
 
     actor_role:
       row.actor_role,
@@ -3315,7 +4410,7 @@ function serializeAudit(row) {
 }
 
 // =========================================================
-// NORMALIZAÇÃO
+// CAMPOS EXTRAS
 // =========================================================
 
 function normalizeExtraFields(
@@ -3323,31 +4418,57 @@ function normalizeExtraFields(
 ) {
   return {
     phone:
-      Boolean(fields?.phone),
+      Boolean(
+        fields?.phone
+      ),
 
     dietary:
-      Boolean(fields?.dietary),
+      Boolean(
+        fields?.dietary
+      ),
 
     notes:
-      Boolean(fields?.notes),
+      Boolean(
+        fields?.notes
+      ),
 
     love_message:
-      fields?.love_message !== false,
+      fields?.love_message !==
+      false,
   };
 }
 
-function normalizeMembers(value) {
-  if (!Array.isArray(value)) {
+// =========================================================
+// NORMALIZAR MEMBROS
+// =========================================================
+
+function normalizeMembers(
+  value
+) {
+  if (
+    !Array.isArray(
+      value
+    )
+  ) {
     return [];
   }
 
   const members = [];
 
-  for (const item of value) {
+  for (
+    const item
+    of value
+  ) {
     const name =
       String(
-        item?.name || ""
-      ).trim();
+        item?.name ||
+          ""
+      )
+        .trim()
+        .slice(
+          0,
+          150
+        );
 
     if (!name) {
       continue;
@@ -3364,8 +4485,56 @@ function normalizeMembers(value) {
     });
   }
 
-  return members.slice(0, 100);
+  return members.slice(
+    0,
+    100
+  );
 }
+
+// =========================================================
+// VALIDAR LIMITE DE PESSOAS
+// =========================================================
+
+function validateMemberLimit(
+  event,
+  members,
+  status
+) {
+  if (
+    status === "yes" &&
+    members.length === 0
+  ) {
+    throw new HttpError(
+      400,
+      "Informe pelo menos uma pessoa que irá à festa."
+    );
+  }
+
+  const max =
+    event.max_people_per_rsvp ===
+      null ||
+    event.max_people_per_rsvp ===
+      undefined
+      ? null
+      : Number(
+          event.max_people_per_rsvp
+        );
+
+  if (
+    max &&
+    members.length >
+      max
+  ) {
+    throw new HttpError(
+      400,
+      `Esta confirmação permite no máximo ${max} pessoa(s).`
+    );
+  }
+}
+
+// =========================================================
+// CONTAR MEMBROS
+// =========================================================
 
 function countMembers(
   members,
@@ -3379,7 +4548,7 @@ function countMembers(
 }
 
 // =========================================================
-// HELPERS
+// SLUG ÚNICO
 // =========================================================
 
 async function uniqueSlug(
@@ -3387,21 +4556,31 @@ async function uniqueSlug(
   title
 ) {
   const base =
-    slugify(title) ||
+    slugify(
+      title
+    ) ||
     "evento";
 
-  let slug = base;
-  let number = 1;
+  let slug =
+    base;
+
+  let number =
+    1;
 
   while (true) {
     const exists =
       await env.DB.prepare(`
         SELECT id
+
         FROM events
+
         WHERE slug = ?
+
         LIMIT 1
       `)
-        .bind(slug)
+        .bind(
+          slug
+        )
         .first();
 
     if (!exists) {
@@ -3415,8 +4594,14 @@ async function uniqueSlug(
   }
 }
 
+// =========================================================
+// SLUG
+// =========================================================
+
 function slugify(value) {
-  return String(value || "")
+  return String(
+    value || ""
+  )
     .normalize("NFD")
     .replace(
       /[\u0300-\u036f]/g,
@@ -3431,11 +4616,22 @@ function slugify(value) {
       /^-+|-+$/g,
       ""
     )
-    .slice(0, 70);
+    .slice(
+      0,
+      70
+    );
 }
 
-function normalizeName(value) {
-  return String(value || "")
+// =========================================================
+// NORMALIZAR NOME
+// =========================================================
+
+function normalizeName(
+  value
+) {
+  return String(
+    value || ""
+  )
     .normalize("NFD")
     .replace(
       /[\u0300-\u036f]/g,
@@ -3453,20 +4649,33 @@ function normalizeName(value) {
     .trim();
 }
 
-function allowedStatus(value) {
+// =========================================================
+// STATUS
+// =========================================================
+
+function allowedStatus(
+  value
+) {
   const status =
     String(
-      value || "pending"
+      value ||
+      "pending"
     ).toLowerCase();
 
   return [
     "yes",
     "no",
     "pending",
-  ].includes(status)
+  ].includes(
+    status
+  )
     ? status
     : "pending";
 }
+
+// =========================================================
+// INTEIRO OPCIONAL
+// =========================================================
 
 function normalizeOptionalInteger(
   value,
@@ -3476,7 +4685,9 @@ function normalizeOptionalInteger(
   if (
     value === null ||
     value === undefined ||
-    String(value).trim() === ""
+    String(
+      value
+    ).trim() === ""
   ) {
     return null;
   }
@@ -3500,7 +4711,9 @@ function integerBetween(
     );
 
   if (
-    !Number.isFinite(number)
+    !Number.isFinite(
+      number
+    )
   ) {
     return min;
   }
@@ -3514,12 +4727,18 @@ function integerBetween(
   );
 }
 
+// =========================================================
+// COR
+// =========================================================
+
 function safeColor(
   value,
   fallback
 ) {
   const color =
-    String(value || "");
+    String(
+      value || ""
+    );
 
   return /^#[0-9a-fA-F]{6}$/.test(
     color
@@ -3528,7 +4747,65 @@ function safeColor(
     : fallback;
 }
 
-function cleanNullable(value) {
+// =========================================================
+// URL OPCIONAL
+// =========================================================
+
+function normalizeOptionalUrl(
+  value
+) {
+  if (
+    value === undefined ||
+    value === null ||
+    String(
+      value
+    ).trim() === ""
+  ) {
+    return null;
+  }
+
+  const text =
+    String(
+      value
+    ).trim();
+
+  let url;
+
+  try {
+    url =
+      new URL(
+        text
+      );
+  } catch {
+    throw new HttpError(
+      400,
+      "A URL da imagem de fundo não é válida."
+    );
+  }
+
+  if (
+    url.protocol !==
+      "https:" &&
+    url.protocol !==
+      "http:"
+  ) {
+    throw new HttpError(
+      400,
+      "A imagem de fundo precisa usar um endereço http ou https."
+    );
+  }
+
+  return url.toString();
+}
+
+// =========================================================
+// TEXTO OPCIONAL
+// =========================================================
+
+function cleanOptionalText(
+  value,
+  maxLength
+) {
   if (
     value === undefined ||
     value === null
@@ -3537,12 +4814,47 @@ function cleanNullable(value) {
   }
 
   const text =
-    String(value).trim();
+    String(
+      value
+    ).trim();
+
+  if (!text) {
+    return null;
+  }
+
+  return text.slice(
+    0,
+    maxLength
+  );
+}
+
+// =========================================================
+// NULLABLE
+// =========================================================
+
+function cleanNullable(
+  value
+) {
+  if (
+    value === undefined ||
+    value === null
+  ) {
+    return null;
+  }
+
+  const text =
+    String(
+      value
+    ).trim();
 
   return text
     ? text
     : null;
 }
+
+// =========================================================
+// JSON SEGURO
+// =========================================================
 
 function safeJson(
   value,
@@ -3557,40 +4869,58 @@ function safeJson(
   }
 
   if (
-    typeof value === "object"
+    typeof value ===
+    "object"
   ) {
     return value;
   }
 
   try {
-    return JSON.parse(value);
+    return JSON.parse(
+      value
+    );
   } catch {
     return fallback;
   }
 }
 
+// =========================================================
+// TOKEN
+// =========================================================
+
 function randomToken() {
   const bytes =
-    new Uint8Array(32);
+    new Uint8Array(
+      32
+    );
 
   crypto.getRandomValues(
     bytes
   );
 
-  return base64Url(bytes);
+  return base64Url(
+    bytes
+  );
 }
 
-function base64Url(bytes) {
+function base64Url(
+  bytes
+) {
   let binary = "";
 
-  for (const byte of bytes) {
+  for (
+    const byte
+    of bytes
+  ) {
     binary +=
       String.fromCharCode(
         byte
       );
   }
 
-  return btoa(binary)
+  return btoa(
+    binary
+  )
     .replace(
       /\+/g,
       "-"
@@ -3605,11 +4935,21 @@ function base64Url(bytes) {
     );
 }
 
-function safeEqual(a, b) {
+// =========================================================
+// COMPARAÇÃO SEGURA
+// =========================================================
+
+function safeEqual(
+  a,
+  b
+) {
   if (
-    typeof a !== "string" ||
-    typeof b !== "string" ||
-    a.length !== b.length
+    typeof a !==
+      "string" ||
+    typeof b !==
+      "string" ||
+    a.length !==
+      b.length
   ) {
     return false;
   }
@@ -3618,45 +4958,70 @@ function safeEqual(a, b) {
 
   for (
     let index = 0;
-    index < a.length;
+    index <
+    a.length;
     index++
   ) {
     diff |=
-      a.charCodeAt(index) ^
-      b.charCodeAt(index);
+      a.charCodeAt(
+        index
+      ) ^
+      b.charCodeAt(
+        index
+      );
   }
 
   return diff === 0;
 }
 
-function parseCookies(header) {
+// =========================================================
+// COOKIES
+// =========================================================
+
+function parseCookies(
+  header
+) {
   const result = {};
 
   for (
-    const part of header.split(";")
+    const part
+    of header.split(";")
   ) {
     const index =
       part.indexOf("=");
 
-    if (index === -1) {
+    if (
+      index === -1
+    ) {
       continue;
     }
 
     const key =
       part
-        .slice(0, index)
+        .slice(
+          0,
+          index
+        )
         .trim();
 
     const value =
       part
-        .slice(index + 1)
+        .slice(
+          index + 1
+        )
         .trim();
 
-    result[key] = value;
+    result[key] =
+      value;
   }
 
   return result;
 }
+
+// =========================================================
+// PRAZO RSVP
+// HORÁRIO DO BRASIL
+// =========================================================
 
 function hasDeadlinePassed(
   deadline
@@ -3665,28 +5030,96 @@ function hasDeadlinePassed(
     return false;
   }
 
-  const end =
-    new Date(
-      `${deadline}T23:59:59`
-    );
-
   if (
-    Number.isNaN(
-      end.getTime()
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      String(
+        deadline
+      )
     )
   ) {
     return false;
   }
 
-  return Date.now() >
-    end.getTime();
+  const today =
+    dateInTimeZone(
+      RSVP_TIME_ZONE
+    );
+
+  /*
+    Se hoje for exatamente a data limite,
+    ainda pode confirmar.
+
+    Exemplo:
+    prazo 20/09
+    durante todo o dia 20/09 continua aberto.
+  */
+
+  return today >
+    deadline;
 }
+
+function dateInTimeZone(
+  timeZone
+) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone,
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit",
+      }
+    ).formatToParts(
+      new Date()
+    );
+
+  const values = {};
+
+  for (
+    const part
+    of parts
+  ) {
+    if (
+      part.type !==
+      "literal"
+    ) {
+      values[
+        part.type
+      ] =
+        part.value;
+    }
+  }
+
+  return (
+    `${values.year}-` +
+    `${values.month}-` +
+    `${values.day}`
+  );
+}
+
+// =========================================================
+// DATA/HORA ATUAL
+// =========================================================
 
 function now() {
-  return new Date().toISOString();
+  return new Date()
+    .toISOString();
 }
 
-async function bodyJson(request) {
+// =========================================================
+// BODY JSON
+// =========================================================
+
+async function bodyJson(
+  request
+) {
   try {
     return await request.json();
   } catch {
@@ -3694,13 +5127,19 @@ async function bodyJson(request) {
   }
 }
 
+// =========================================================
+// RESPONSE JSON
+// =========================================================
+
 function json(
   data,
   status = 200,
   headers = {}
 ) {
   return new Response(
-    JSON.stringify(data),
+    JSON.stringify(
+      data
+    ),
     {
       status,
 
@@ -3712,11 +5151,21 @@ function json(
   );
 }
 
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
+// =========================================================
+// ERRO HTTP
+// =========================================================
 
-    this.status = status;
+class HttpError extends Error {
+  constructor(
+    status,
+    message
+  ) {
+    super(
+      message
+    );
+
+    this.status =
+      status;
   }
 }
 
@@ -3743,13 +5192,16 @@ async function serveApp(
     );
 
   if (
-    response.status !== 404
+    response.status !==
+    404
   ) {
     return response;
   }
 
   const url =
-    new URL(request.url);
+    new URL(
+      request.url
+    );
 
   url.pathname =
     "/index.html";
