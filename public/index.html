@@ -1,16 +1,99 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="referrer" content="no-referrer" />
-  <meta name="robots" content="noindex,nofollow" />
-  <title>Libri RSVP</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  >
+
+  <meta
+    name="referrer"
+    content="no-referrer"
+  >
+
+  <meta
+    name="robots"
+    content="noindex,nofollow"
+  >
+
+  <meta
+    name="theme-color"
+    content="#b8735f"
+  >
+
+  <meta
+    name="color-scheme"
+    content="light"
+  >
+
+  <title>
+    Libri RSVP | Confirmação de presença
+  </title>
+
+  <link
+    rel="icon"
+    type="image/png"
+    href="/libri-logo.png"
+  >
+
+  <link
+    rel="apple-touch-icon"
+    href="/libri-logo.png"
+  >
+
+  <link
+    rel="stylesheet"
+    href="/styles.css"
+  >
+
+  <style>
+    /*
+      A marca do topo continua ocupando o mesmo espaço
+      previsto pelo app.js, mas agora usa a logo oficial
+      da Libri.
+    */
+
+    .brand .mark {
+      overflow: hidden;
+
+      background-image:
+        url("/libri-logo.png");
+
+      background-position:
+        center;
+
+      background-size:
+        cover;
+
+      background-repeat:
+        no-repeat;
+
+      color:
+        transparent;
+
+      font-size:
+        0;
+    }
+  </style>
 </head>
+
 <body>
+
   <div id="app"></div>
-  <div id="toast" class="toast" aria-live="polite"></div>
-  <script type="module" src="/app.js"></script>
+
+  <div
+    id="toast"
+    class="toast"
+    aria-live="polite"
+    aria-atomic="true"
+  ></div>
+
+  <script
+    type="module"
+    src="/app.js"
+  ></script>
+
 </body>
 </html>
