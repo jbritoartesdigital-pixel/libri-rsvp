@@ -1978,7 +1978,8 @@ input[type="range"] {
   padding: 20px 14px;
   display: grid;
   place-items: center;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
   background:
     radial-gradient(circle at 50% 0%, rgba(245,223,218,.50), transparent 26rem),
     linear-gradient(180deg, #f7e8e2, #e8d2c8);
@@ -2080,6 +2081,40 @@ input[type="range"] {
   background: rgba(255,255,255,.77);
 }
 
+
+
+/* =========================================================
+   31.1. PUBLIC REFINEMENTS
+   ========================================================= */
+
+.public-event-logo {
+  width: clamp(132px, 38vw, 170px);
+  height: auto;
+  max-height: 118px;
+  margin: 0 auto 24px;
+  object-fit: contain;
+}
+
+.public-card .eyebrow {
+  display: block;
+  margin-bottom: 10px;
+  line-height: 1.35;
+}
+
+.public-card h1 {
+  margin: 0 0 16px;
+  line-height: 1.10;
+}
+
+.public-card .date {
+  margin-bottom: 22px;
+  line-height: 1.45;
+}
+
+.public-card > p {
+  margin-bottom: 22px;
+  line-height: 1.72;
+}
 
 /* =========================================================
    32. PUBLIC CHOICE
@@ -2632,15 +2667,46 @@ input[type="range"] {
   }
 
   .public-page {
-    padding: 10px;
-    align-items: center;
+    min-height: 100svh;
+    padding: 18px 10px 30px;
+    align-items: start;
+    justify-items: center;
+    overflow-x: hidden;
+    overflow-y: visible;
+    overscroll-behavior-y: contain;
   }
 
   .public-card {
     width: 100%;
-    max-height: calc(100svh - 20px);
-    padding: 19px;
+    max-height: none;
+    margin: 0 auto;
+    padding: 21px 19px 23px;
+    overflow: visible;
     border-radius: 23px;
+  }
+
+  .public-event-logo {
+    width: clamp(142px, 42vw, 178px);
+    max-height: 124px;
+    margin-bottom: 26px;
+  }
+
+  .public-card .eyebrow {
+    margin-bottom: 11px;
+  }
+
+  .public-card h1 {
+    margin-bottom: 18px;
+    line-height: 1.12;
+  }
+
+  .public-card .date {
+    margin-bottom: 23px;
+  }
+
+  .public-card > p {
+    margin-bottom: 24px;
+    line-height: 1.74;
   }
 
   .modal-backdrop {
