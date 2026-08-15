@@ -2588,6 +2588,28 @@ input[type="range"] {
     flex-direction: column;
   }
 
+  /*
+    No celular a toolbar vira coluna.
+    A busca não pode manter o flex-basis de 320px do desktop,
+    senão cria um espaço enorme e deixa a lupa perdida no meio.
+  */
+  .search-shell {
+    flex: none;
+    width: 100%;
+  }
+
+  .search-shell input {
+    width: 100%;
+  }
+
+  .toolbar .segmented {
+    width: 100%;
+  }
+
+  .toolbar .segmented button {
+    flex: 1 0 auto;
+  }
+
   .toolbar select.search {
     flex-basis: auto !important;
   }
