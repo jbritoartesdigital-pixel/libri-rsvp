@@ -7,9 +7,8 @@ export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
-      const path = url.pathname;
 
-      if (path.startsWith("/api/")) {
+      if (url.pathname.startsWith("/api/")) {
         return await handleApi(request, env, url);
       }
 
@@ -36,13 +35,17 @@ export default {
   },
 };
 
+// =========================================================
+// API
+// =========================================================
+
 async function handleApi(request, env, url) {
   const method = request.method.toUpperCase();
   const path = url.pathname;
 
-  // =========================================================
-  // ADMIN
-  // =========================================================
+  // =======================================================
+  // ADMIN LOGIN
+  // =======================================================
 
   if (path === "/api/admin/login" && method === "POST") {
     const body = await bodyJson(request);
@@ -51,13 +54,16 @@ async function handleApi(request, env, url) {
       return json(
         {
           error:
-            "ADMIN_PASSWORD e SESSION_SECRET ainda não foram configurados no Cloudflare.",
+            "ADMIN_PASSWORD e SESSION_SECRET não estão configurados.",
         },
         500
       );
     }
 
-    if (String(body.password || "") !== String(env.ADMIN_PASSWORD)) {
+    if (
+      String(body.password || "") !==
+      String(env.ADMIN_PASSWORD)
+    ) {
       return json(
         {
           error: "Senha incorreta.",
@@ -118,22 +124,32 @@ async function handleApi(request, env, url) {
     }
   }
 
-  // =========================================================
-  // ADMIN - EVENTOS
-  // =========================================================
+  // =======================================================
+  // ADMIN - LISTA DE EVENTOS
+  // =======================================================
 
   if (path === "/api/admin/events" && method === "GET") {
-    const events = await getEventsWithSummary(env);
+    const archived =
+      url.searchParams.get("archived") === "1";
+
+    const events = await getEventsWithSummary(
+      env,
+      archived
+    );
 
     return json({
       events,
     });
   }
 
+  // =======================================================
+  // ADMIN - CRIAR EVENTO
+  // =======================================================
+
   if (path === "/api/admin/events" && method === "POST") {
     const body = await bodyJson(request);
 
-    if (!body.title?.trim()) {
+    if (!String(body.title || "").trim()) {
       return json(
         {
           error: "Informe o nome do evento.",
@@ -158,11 +174,13 @@ async function handleApi(request, env, url) {
     });
   }
 
-  let match = path.match(/^\/api\/admin\/events\/([^/]+)$/);
+  // =======================================================
+  // ADMIN - EVENTO
+  // =======================================================
 
-  // =========================================================
-  // ADMIN - ABRIR EVENTO
-  // =========================================================
+  let match = path.match(
+    /^\/api\/admin\/events\/([^/]+)$/
+  );
 
   if (match && method === "GET") {
     const eventId = decodeURIComponent(match[1]);
@@ -178,22 +196,29 @@ async function handleApi(request, env, url) {
       );
     }
 
-    const summary = await getSummary(env, event.id);
+    const summary = await getSummary(env, eventId);
 
     const origin = new URL(request.url).origin;
 
     return json({
       event: serializeEvent(event),
       summary,
+
       client_url: event.client_token
-        ? `${origin}/cliente/${encodeURIComponent(event.client_token)}`
+        ? `${origin}/cliente/${encodeURIComponent(
+            event.client_token
+          )}`
         : null,
+
+      public_url: `${origin}/e/${encodeURIComponent(
+        event.slug
+      )}`,
     });
   }
 
-  // =========================================================
+  // =======================================================
   // ADMIN - EDITAR EVENTO
-  // =========================================================
+  // =======================================================
 
   if (match && method === "PATCH") {
     const eventId = decodeURIComponent(match[1]);
@@ -211,7 +236,9 @@ async function handleApi(request, env, url) {
 
     const body = await bodyJson(request);
 
-    const title = String(body.title ?? current.title).trim();
+    const title = String(
+      body.title ?? current.title
+    ).trim();
 
     if (!title) {
       return json(
@@ -229,19 +256,7 @@ async function handleApi(request, env, url) {
 
     const extraFields =
       body.extra_fields !== undefined
-        ? {
-            phone: Boolean(body.extra_fields?.phone),
-
-            adults_children:
-              body.extra_fields?.adults_children !== false,
-
-            companions:
-              body.extra_fields?.companions !== false,
-
-            dietary: Boolean(body.extra_fields?.dietary),
-
-            notes: Boolean(body.extra_fields?.notes),
-          }
+        ? normalizeExtraFields(body.extra_fields)
         : currentExtraFields;
 
     const rsvpMode =
@@ -250,6 +265,15 @@ async function handleApi(request, env, url) {
         : body.rsvp_mode === "free"
           ? "free"
           : current.rsvp_mode;
+
+    const maxPeople =
+      normalizeOptionalInteger(
+        body.max_people_per_rsvp !== undefined
+          ? body.max_people_per_rsvp
+          : current.max_people_per_rsvp,
+        1,
+        100
+      );
 
     await env.DB.prepare(`
       UPDATE events
@@ -261,7 +285,10 @@ async function handleApi(request, env, url) {
         welcome_message = ?,
         primary_color = ?,
         accent_color = ?,
+        background_image_url = ?,
         extra_fields = ?,
+        rsvp_deadline = ?,
+        max_people_per_rsvp = ?,
         updated_at = ?
       WHERE id = ?
     `)
@@ -298,7 +325,21 @@ async function handleApi(request, env, url) {
           current.accent_color || "#f4e8ed"
         ),
 
+        cleanNullable(
+          body.background_image_url !== undefined
+            ? body.background_image_url
+            : current.background_image_url
+        ),
+
         JSON.stringify(extraFields),
+
+        cleanNullable(
+          body.rsvp_deadline !== undefined
+            ? body.rsvp_deadline
+            : current.rsvp_deadline
+        ),
+
+        maxPeople,
 
         now(),
 
@@ -315,16 +356,162 @@ async function handleApi(request, env, url) {
       },
     });
 
-    const updated = await getEvent(env, eventId);
-
     return json({
-      event: serializeEvent(updated),
+      event: serializeEvent(
+        await getEvent(env, eventId)
+      ),
     });
   }
 
-  // =========================================================
+  // =======================================================
+  // ADMIN - PAUSAR / REATIVAR
+  // =======================================================
+
+  match = path.match(
+    /^\/api\/admin\/events\/([^/]+)\/status$/
+  );
+
+  if (match && method === "POST") {
+    const eventId = decodeURIComponent(match[1]);
+
+    const event = await getEvent(env, eventId);
+
+    if (!event) {
+      return json(
+        {
+          error: "Evento não encontrado.",
+        },
+        404
+      );
+    }
+
+    const body = await bodyJson(request);
+
+    const status =
+      body.status === "inactive"
+        ? "inactive"
+        : "active";
+
+    await env.DB.prepare(`
+      UPDATE events
+      SET status = ?,
+          updated_at = ?
+      WHERE id = ?
+    `)
+      .bind(status, now(), eventId)
+      .run();
+
+    await audit(env, {
+      eventId,
+      actorRole: "admin",
+      action:
+        status === "active"
+          ? "event_reactivated"
+          : "event_paused",
+    });
+
+    return json({
+      event: serializeEvent(
+        await getEvent(env, eventId)
+      ),
+    });
+  }
+
+  // =======================================================
+  // ADMIN - ARQUIVAR EVENTO
+  // =======================================================
+
+  match = path.match(
+    /^\/api\/admin\/events\/([^/]+)\/archive$/
+  );
+
+  if (match && method === "POST") {
+    const eventId = decodeURIComponent(match[1]);
+
+    const event = await getEvent(env, eventId);
+
+    if (!event) {
+      return json(
+        {
+          error: "Evento não encontrado.",
+        },
+        404
+      );
+    }
+
+    const archivedAt = now();
+
+    await env.DB.prepare(`
+      UPDATE events
+      SET archived_at = ?,
+          status = 'inactive',
+          updated_at = ?
+      WHERE id = ?
+    `)
+      .bind(
+        archivedAt,
+        archivedAt,
+        eventId
+      )
+      .run();
+
+    await audit(env, {
+      eventId,
+      actorRole: "admin",
+      action: "event_archived",
+    });
+
+    return json({
+      ok: true,
+    });
+  }
+
+  // =======================================================
+  // ADMIN - RESTAURAR EVENTO
+  // =======================================================
+
+  match = path.match(
+    /^\/api\/admin\/events\/([^/]+)\/unarchive$/
+  );
+
+  if (match && method === "POST") {
+    const eventId = decodeURIComponent(match[1]);
+
+    const event = await getEvent(env, eventId);
+
+    if (!event) {
+      return json(
+        {
+          error: "Evento não encontrado.",
+        },
+        404
+      );
+    }
+
+    await env.DB.prepare(`
+      UPDATE events
+      SET archived_at = NULL,
+          status = 'active',
+          updated_at = ?
+      WHERE id = ?
+    `)
+      .bind(now(), eventId)
+      .run();
+
+    await audit(env, {
+      eventId,
+      actorRole: "admin",
+      action: "event_unarchived",
+    });
+
+    return json({
+      ok: true,
+    });
+  }
+
+  // =======================================================
   // ADMIN - TROCAR LINK DA CLIENTE
-  // =========================================================
+  // =======================================================
 
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/client-link\/reset$/
@@ -352,7 +539,11 @@ async function handleApi(request, env, url) {
           updated_at = ?
       WHERE id = ?
     `)
-      .bind(token, now(), eventId)
+      .bind(
+        token,
+        now(),
+        eventId
+      )
       .run();
 
     await audit(env, {
@@ -362,15 +553,137 @@ async function handleApi(request, env, url) {
     });
 
     return json({
-      client_url: `${new URL(request.url).origin}/cliente/${encodeURIComponent(
-        token
-      )}`,
+      client_url:
+        `${new URL(request.url).origin}` +
+        `/cliente/${encodeURIComponent(token)}`,
     });
   }
 
-  // =========================================================
+  // =======================================================
+  // ADMIN - HISTÓRICO
+  // =======================================================
+
+  match = path.match(
+    /^\/api\/admin\/events\/([^/]+)\/audit$/
+  );
+
+  if (match && method === "GET") {
+    const eventId = decodeURIComponent(match[1]);
+
+    const event = await getEvent(env, eventId);
+
+    if (!event) {
+      return json(
+        {
+          error: "Evento não encontrado.",
+        },
+        404
+      );
+    }
+
+    const limit = integerBetween(
+      url.searchParams.get("limit") || 100,
+      1,
+      300
+    );
+
+    const result = await env.DB.prepare(`
+      SELECT *
+      FROM audit_logs
+      WHERE event_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `)
+      .bind(
+        eventId,
+        limit
+      )
+      .all();
+
+    return json({
+      logs: result.results.map(
+        serializeAudit
+      ),
+    });
+  }
+
+  // =======================================================
+  // ADMIN - LIXEIRA
+  // =======================================================
+
+  match = path.match(
+    /^\/api\/admin\/events\/([^/]+)\/trash$/
+  );
+
+  if (match && method === "GET") {
+    const eventId = decodeURIComponent(match[1]);
+
+    const guests = await listDeletedGuests(
+      env,
+      eventId
+    );
+
+    return json({
+      guests,
+    });
+  }
+
+  // =======================================================
+  // ADMIN - RESTAURAR CONVIDADO
+  // =======================================================
+
+  match = path.match(
+    /^\/api\/admin\/events\/([^/]+)\/guests\/([^/]+)\/restore$/
+  );
+
+  if (match && method === "POST") {
+    const eventId = decodeURIComponent(match[1]);
+    const guestId = decodeURIComponent(match[2]);
+
+    const guest = await getDeletedGuestRow(
+      env,
+      eventId,
+      guestId
+    );
+
+    if (!guest) {
+      return json(
+        {
+          error:
+            "Convidado excluído não encontrado.",
+        },
+        404
+      );
+    }
+
+    await restoreGuest(
+      env,
+      eventId,
+      guestId
+    );
+
+    await audit(env, {
+      eventId,
+      guestId,
+      actorRole: "admin",
+      action: "guest_restored",
+      details: {
+        name: guest.primary_name,
+      },
+    });
+
+    return json({
+      guest: await getGuest(
+        env,
+        eventId,
+        guestId
+      ),
+    });
+  }
+
+  // =======================================================
   // ADMIN - LISTAR / ADICIONAR CONVIDADOS
-  // =========================================================
+  // =======================================================
 
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/guests$/
@@ -390,7 +703,11 @@ async function handleApi(request, env, url) {
       );
     }
 
-    const guests = await listGuests(env, eventId, url);
+    const guests = await listGuests(
+      env,
+      eventId,
+      url
+    );
 
     return json({
       guests,
@@ -413,7 +730,23 @@ async function handleApi(request, env, url) {
 
     const body = await bodyJson(request);
 
-    const guest = await createGuest(env, eventId, body, "admin");
+    const members = normalizeMembers(
+      body.members
+    );
+
+    const duplicateMatches =
+      await findDuplicateMembers(
+        env,
+        eventId,
+        members
+      );
+
+    const guest = await createGuest(
+      env,
+      eventId,
+      body,
+      "admin"
+    );
 
     await audit(env, {
       eventId,
@@ -427,12 +760,14 @@ async function handleApi(request, env, url) {
 
     return json({
       guest,
+      duplicate_matches:
+        duplicateMatches,
     });
   }
 
-  // =========================================================
+  // =======================================================
   // ADMIN - EDITAR / EXCLUIR CONVIDADO
-  // =========================================================
+  // =======================================================
 
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/guests\/([^/]+)$/
@@ -443,6 +778,14 @@ async function handleApi(request, env, url) {
     const guestId = decodeURIComponent(match[2]);
 
     const body = await bodyJson(request);
+
+    const duplicateMatches =
+      await findDuplicateMembers(
+        env,
+        eventId,
+        normalizeMembers(body.members),
+        guestId
+      );
 
     const guest = await updateGuest(
       env,
@@ -472,6 +815,8 @@ async function handleApi(request, env, url) {
 
     return json({
       guest,
+      duplicate_matches:
+        duplicateMatches,
     });
   }
 
@@ -479,7 +824,11 @@ async function handleApi(request, env, url) {
     const eventId = decodeURIComponent(match[1]);
     const guestId = decodeURIComponent(match[2]);
 
-    const guest = await getGuest(env, eventId, guestId);
+    const guest = await getGuest(
+      env,
+      eventId,
+      guestId
+    );
 
     if (!guest) {
       return json(
@@ -490,7 +839,11 @@ async function handleApi(request, env, url) {
       );
     }
 
-    await softDeleteGuest(env, eventId, guestId);
+    await softDeleteGuest(
+      env,
+      eventId,
+      guestId
+    );
 
     await audit(env, {
       eventId,
@@ -507,9 +860,9 @@ async function handleApi(request, env, url) {
     });
   }
 
-  // =========================================================
+  // =======================================================
   // ADMIN - EXPORTAR CSV
-  // =========================================================
+  // =======================================================
 
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/export\.csv$/
@@ -529,7 +882,10 @@ async function handleApi(request, env, url) {
       );
     }
 
-    const guests = await listGuestsRaw(env, eventId);
+    const guests = await listGuestsRaw(
+      env,
+      eventId
+    );
 
     return csvResponse(
       guests,
@@ -537,9 +893,9 @@ async function handleApi(request, env, url) {
     );
   }
 
-  // =========================================================
-  // CLIENTE
-  // =========================================================
+  // =======================================================
+  // CLIENTE - EVENTO
+  // =======================================================
 
   match = path.match(
     /^\/api\/client\/([^/]+)\/event$/
@@ -548,28 +904,34 @@ async function handleApi(request, env, url) {
   if (match && method === "GET") {
     const token = decodeURIComponent(match[1]);
 
-    const event = await getEventByClientToken(env, token);
+    const event = await getEventByClientToken(
+      env,
+      token
+    );
 
     if (!event) {
       return json(
         {
-          error: "Este link não é válido ou foi substituído.",
+          error:
+            "Este link não é válido ou foi substituído.",
         },
         404
       );
     }
 
-    const summary = await getSummary(env, event.id);
-
     return json({
       event: serializeEvent(event),
-      summary,
+
+      summary: await getSummary(
+        env,
+        event.id
+      ),
     });
   }
 
-  // =========================================================
-  // CLIENTE - LISTAR / ADICIONAR CONVIDADOS
-  // =========================================================
+  // =======================================================
+  // CLIENTE - LISTAR / ADICIONAR
+  // =======================================================
 
   match = path.match(
     /^\/api\/client\/([^/]+)\/guests$/
@@ -578,7 +940,10 @@ async function handleApi(request, env, url) {
   if (match && method === "GET") {
     const token = decodeURIComponent(match[1]);
 
-    const event = await getEventByClientToken(env, token);
+    const event = await getEventByClientToken(
+      env,
+      token
+    );
 
     if (!event) {
       return json(
@@ -589,17 +954,22 @@ async function handleApi(request, env, url) {
       );
     }
 
-    const guests = await listGuests(env, event.id, url);
-
     return json({
-      guests,
+      guests: await listGuests(
+        env,
+        event.id,
+        url
+      ),
     });
   }
 
   if (match && method === "POST") {
     const token = decodeURIComponent(match[1]);
 
-    const event = await getEventByClientToken(env, token);
+    const event = await getEventByClientToken(
+      env,
+      token
+    );
 
     if (!event) {
       return json(
@@ -611,6 +981,13 @@ async function handleApi(request, env, url) {
     }
 
     const body = await bodyJson(request);
+
+    const duplicateMatches =
+      await findDuplicateMembers(
+        env,
+        event.id,
+        normalizeMembers(body.members)
+      );
 
     const guest = await createGuest(
       env,
@@ -631,12 +1008,14 @@ async function handleApi(request, env, url) {
 
     return json({
       guest,
+      duplicate_matches:
+        duplicateMatches,
     });
   }
 
-  // =========================================================
-  // CLIENTE - EDITAR / EXCLUIR CONVIDADO
-  // =========================================================
+  // =======================================================
+  // CLIENTE - EDITAR / EXCLUIR
+  // =======================================================
 
   match = path.match(
     /^\/api\/client\/([^/]+)\/guests\/([^/]+)$/
@@ -646,7 +1025,10 @@ async function handleApi(request, env, url) {
     const token = decodeURIComponent(match[1]);
     const guestId = decodeURIComponent(match[2]);
 
-    const event = await getEventByClientToken(env, token);
+    const event = await getEventByClientToken(
+      env,
+      token
+    );
 
     if (!event) {
       return json(
@@ -658,6 +1040,14 @@ async function handleApi(request, env, url) {
     }
 
     const body = await bodyJson(request);
+
+    const duplicateMatches =
+      await findDuplicateMembers(
+        env,
+        event.id,
+        normalizeMembers(body.members),
+        guestId
+      );
 
     const guest = await updateGuest(
       env,
@@ -687,6 +1077,8 @@ async function handleApi(request, env, url) {
 
     return json({
       guest,
+      duplicate_matches:
+        duplicateMatches,
     });
   }
 
@@ -694,7 +1086,10 @@ async function handleApi(request, env, url) {
     const token = decodeURIComponent(match[1]);
     const guestId = decodeURIComponent(match[2]);
 
-    const event = await getEventByClientToken(env, token);
+    const event = await getEventByClientToken(
+      env,
+      token
+    );
 
     if (!event) {
       return json(
@@ -741,9 +1136,9 @@ async function handleApi(request, env, url) {
     });
   }
 
-  // =========================================================
+  // =======================================================
   // CLIENTE - EXPORTAR
-  // =========================================================
+  // =======================================================
 
   match = path.match(
     /^\/api\/client\/([^/]+)\/export\.csv$/
@@ -752,7 +1147,10 @@ async function handleApi(request, env, url) {
   if (match && method === "GET") {
     const token = decodeURIComponent(match[1]);
 
-    const event = await getEventByClientToken(env, token);
+    const event = await getEventByClientToken(
+      env,
+      token
+    );
 
     if (!event) {
       return json(
@@ -763,20 +1161,19 @@ async function handleApi(request, env, url) {
       );
     }
 
-    const guests = await listGuestsRaw(
-      env,
-      event.id
-    );
-
     return csvResponse(
-      guests,
+      await listGuestsRaw(
+        env,
+        event.id
+      ),
+
       `convidados-${event.slug}.csv`
     );
   }
 
-  // =========================================================
+  // =======================================================
   // PÚBLICO - EVENTO
-  // =========================================================
+  // =======================================================
 
   match = path.match(
     /^\/api\/public\/events\/([^/]+)$/
@@ -785,9 +1182,12 @@ async function handleApi(request, env, url) {
   if (match && method === "GET") {
     const slug = decodeURIComponent(match[1]);
 
-    const event = await getEventBySlug(env, slug);
+    const event = await getEventBySlug(
+      env,
+      slug
+    );
 
-    if (!event || event.status !== "active") {
+    if (!event) {
       return json(
         {
           error:
@@ -797,16 +1197,23 @@ async function handleApi(request, env, url) {
       );
     }
 
+    const availability =
+      getRsvpAvailability(event);
+
     return json({
-      event: publicEvent(event),
-      turnstile_sitekey:
-        env.TURNSTILE_SITE_KEY || null,
+      event: {
+        ...publicEvent(event),
+        accepting_rsvp:
+          availability.accepting,
+        closed_reason:
+          availability.reason,
+      },
     });
   }
 
-  // =========================================================
-  // PÚBLICO - BUSCAR NOME NA LISTA
-  // =========================================================
+  // =======================================================
+  // PÚBLICO - BUSCAR NOME
+  // =======================================================
 
   match = path.match(
     /^\/api\/public\/events\/([^/]+)\/lookup$/
@@ -815,14 +1222,31 @@ async function handleApi(request, env, url) {
   if (match && method === "POST") {
     const slug = decodeURIComponent(match[1]);
 
-    const event = await getEventBySlug(env, slug);
+    const event = await getEventBySlug(
+      env,
+      slug
+    );
 
-    if (!event || event.status !== "active") {
+    if (!event) {
       return json(
         {
           error: "Evento indisponível.",
         },
         404
+      );
+    }
+
+    const availability =
+      getRsvpAvailability(event);
+
+    if (!availability.accepting) {
+      return json(
+        {
+          error:
+            availability.reason ||
+            "As confirmações estão encerradas.",
+        },
+        403
       );
     }
 
@@ -838,7 +1262,8 @@ async function handleApi(request, env, url) {
 
     const body = await bodyJson(request);
 
-    const normalized = normalizeName(body.name || "");
+    const normalized =
+      normalizeName(body.name || "");
 
     if (!normalized) {
       return json(
@@ -849,19 +1274,35 @@ async function handleApi(request, env, url) {
       );
     }
 
-    const guest = await env.DB.prepare(`
-      SELECT *
-      FROM guests
-      WHERE event_id = ?
-        AND normalized_name = ?
-        AND deleted_at IS NULL
-      ORDER BY created_at ASC
-      LIMIT 1
-    `)
-      .bind(event.id, normalized)
-      .first();
+    const guestRow =
+      await env.DB.prepare(`
+        SELECT DISTINCT g.*
+        FROM guests g
 
-    if (!guest) {
+        LEFT JOIN guest_members gm
+          ON gm.guest_id = g.id
+          AND gm.deleted_at IS NULL
+
+        WHERE g.event_id = ?
+          AND g.deleted_at IS NULL
+
+          AND (
+            g.normalized_name = ?
+            OR gm.normalized_name = ?
+          )
+
+        ORDER BY g.created_at ASC
+
+        LIMIT 1
+      `)
+        .bind(
+          event.id,
+          normalized,
+          normalized
+        )
+        .first();
+
+    if (!guestRow) {
       return json(
         {
           error:
@@ -872,13 +1313,16 @@ async function handleApi(request, env, url) {
     }
 
     return json({
-      guest: serializeGuest(guest),
+      guest: await hydrateGuest(
+        env,
+        guestRow
+      ),
     });
   }
 
-  // =========================================================
-  // PÚBLICO - CONFIRMAR PRESENÇA
-  // =========================================================
+  // =======================================================
+  // PÚBLICO - RSVP
+  // =======================================================
 
   match = path.match(
     /^\/api\/public\/events\/([^/]+)\/rsvp$/
@@ -887,39 +1331,49 @@ async function handleApi(request, env, url) {
   if (match && method === "POST") {
     const slug = decodeURIComponent(match[1]);
 
-    const event = await getEventBySlug(env, slug);
+    const event = await getEventBySlug(
+      env,
+      slug
+    );
 
-    if (!event || event.status !== "active") {
+    if (!event) {
       return json(
         {
-          error:
-            "Esta confirmação está encerrada.",
+          error: "Evento indisponível.",
         },
         404
       );
     }
 
-    const body = await bodyJson(request);
+    const availability =
+      getRsvpAvailability(event);
 
-    const turnstileOk =
-      await verifyTurnstile(
-        request,
-        env,
-        body.turnstile_token
-      );
-
-    if (!turnstileOk) {
+    if (!availability.accepting) {
       return json(
         {
           error:
-            "Não foi possível validar a confirmação. Tente novamente.",
+            availability.reason ||
+            "As confirmações estão encerradas.",
         },
-        400
+        403
       );
     }
 
+    const body = await bodyJson(request);
+
+    // Honeypot silencioso.
+    if (
+      String(body.website || "").trim()
+    ) {
+      return json({
+        ok: true,
+      });
+    }
+
     const responseStatus =
-      allowedStatus(body.response_status);
+      allowedStatus(
+        body.response_status
+      );
 
     if (
       responseStatus !== "yes" &&
@@ -929,6 +1383,40 @@ async function handleApi(request, env, url) {
         {
           error:
             "Escolha se poderá comparecer.",
+        },
+        400
+      );
+    }
+
+    const members =
+      responseStatus === "yes"
+        ? normalizeMembers(body.members)
+        : [];
+
+    if (
+      responseStatus === "yes" &&
+      members.length === 0
+    ) {
+      return json(
+        {
+          error:
+            "Adicione pelo menos o nome de uma pessoa que irá à festa.",
+        },
+        400
+      );
+    }
+
+    if (
+      event.max_people_per_rsvp &&
+      members.length >
+        Number(
+          event.max_people_per_rsvp
+        )
+    ) {
+      return json(
+        {
+          error:
+            `Esta confirmação permite no máximo ${event.max_people_per_rsvp} pessoa(s).`,
         },
         400
       );
@@ -947,11 +1435,12 @@ async function handleApi(request, env, url) {
         );
       }
 
-      const existing = await getGuest(
-        env,
-        event.id,
-        body.guest_id
-      );
+      const existing =
+        await getGuest(
+          env,
+          event.id,
+          body.guest_id
+        );
 
       if (!existing) {
         return json(
@@ -969,15 +1458,23 @@ async function handleApi(request, env, url) {
         existing.id,
         {
           ...body,
+
           primary_name:
             existing.primary_name,
+
+          response_status:
+            responseStatus,
+
+          members,
         }
       );
     } else {
-      const name =
-        String(body.primary_name || "").trim();
+      const primaryName =
+        String(
+          body.primary_name || ""
+        ).trim();
 
-      if (!name) {
+      if (!primaryName) {
         return json(
           {
             error: "Informe seu nome.",
@@ -987,33 +1484,52 @@ async function handleApi(request, env, url) {
       }
 
       const normalized =
-        normalizeName(name);
+        normalizeName(primaryName);
 
-      const existing =
+      const existingRow =
         await env.DB.prepare(`
           SELECT *
           FROM guests
+
           WHERE event_id = ?
             AND normalized_name = ?
             AND deleted_at IS NULL
+
           ORDER BY created_at ASC
           LIMIT 1
         `)
-          .bind(event.id, normalized)
+          .bind(
+            event.id,
+            normalized
+          )
           .first();
 
-      if (existing) {
+      if (existingRow) {
         guest = await updateGuest(
           env,
           event.id,
-          existing.id,
-          body
+          existingRow.id,
+          {
+            ...body,
+
+            response_status:
+              responseStatus,
+
+            members,
+          }
         );
       } else {
         guest = await createGuest(
           env,
           event.id,
-          body,
+          {
+            ...body,
+
+            response_status:
+              responseStatus,
+
+            members,
+          },
           "public"
         );
       }
@@ -1028,6 +1544,8 @@ async function handleApi(request, env, url) {
         name: guest.primary_name,
         response_status:
           guest.response_status,
+        people:
+          guest.members.length,
       },
     });
 
@@ -1058,24 +1576,19 @@ async function createEvent(env, body) {
   );
 
   const clientToken = randomToken();
-
   const createdAt = now();
 
-  const extraFields = {
-    phone: Boolean(body.extra_fields?.phone),
+  const extraFields =
+    normalizeExtraFields(
+      body.extra_fields || {}
+    );
 
-    adults_children:
-      body.extra_fields?.adults_children !== false,
-
-    companions:
-      body.extra_fields?.companions !== false,
-
-    dietary:
-      Boolean(body.extra_fields?.dietary),
-
-    notes:
-      Boolean(body.extra_fields?.notes),
-  };
+  const maxPeople =
+    normalizeOptionalInteger(
+      body.max_people_per_rsvp,
+      1,
+      100
+    );
 
   await env.DB.prepare(`
     INSERT INTO events (
@@ -1092,19 +1605,35 @@ async function createEvent(env, body) {
       extra_fields,
       client_token,
       status,
+      rsvp_deadline,
+      max_people_per_rsvp,
+      archived_at,
       created_at,
       updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+
+    VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      'active',
+      ?, ?,
+      NULL,
+      ?, ?
+    )
   `)
     .bind(
       id,
+
       String(body.title).trim(),
+
       slug,
 
-      cleanNullable(body.event_date),
+      cleanNullable(
+        body.event_date
+      ),
 
-      cleanNullable(body.event_time),
+      cleanNullable(
+        body.event_time
+      ),
 
       body.rsvp_mode === "list"
         ? "list"
@@ -1128,9 +1657,17 @@ async function createEvent(env, body) {
         body.background_image_url
       ),
 
-      JSON.stringify(extraFields),
+      JSON.stringify(
+        extraFields
+      ),
 
       clientToken,
+
+      cleanNullable(
+        body.rsvp_deadline
+      ),
+
+      maxPeople,
 
       createdAt,
 
@@ -1143,7 +1680,10 @@ async function createEvent(env, body) {
   );
 }
 
-async function getEventsWithSummary(env) {
+async function getEventsWithSummary(
+  env,
+  archived = false
+) {
   const result =
     await env.DB.prepare(`
       SELECT
@@ -1173,18 +1713,28 @@ async function getEventsWithSummary(env) {
           END
         ) AS pending_responses,
 
-        SUM(
-          CASE
+        COUNT(
+          DISTINCT CASE
             WHEN g.response_status = 'yes'
-            THEN
-              CASE
-                WHEN COALESCE(g.adults, 0) + COALESCE(g.children, 0) < 1
-                THEN 1
-                ELSE COALESCE(g.adults, 0) + COALESCE(g.children, 0)
-              END
-            ELSE 0
+            THEN gm.id
           END
-        ) AS people_confirmed
+        ) AS people_confirmed,
+
+        COUNT(
+          DISTINCT CASE
+            WHEN g.response_status = 'yes'
+              AND gm.person_type = 'adult'
+            THEN gm.id
+          END
+        ) AS adults_confirmed,
+
+        COUNT(
+          DISTINCT CASE
+            WHEN g.response_status = 'yes'
+              AND gm.person_type = 'child'
+            THEN gm.id
+          END
+        ) AS children_confirmed
 
       FROM events e
 
@@ -1192,11 +1742,27 @@ async function getEventsWithSummary(env) {
         ON g.event_id = e.id
         AND g.deleted_at IS NULL
 
+      LEFT JOIN guest_members gm
+        ON gm.guest_id = g.id
+        AND gm.deleted_at IS NULL
+
+      WHERE
+        (
+          ? = 1
+          AND e.archived_at IS NOT NULL
+        )
+        OR
+        (
+          ? = 0
+          AND e.archived_at IS NULL
+        )
+
       GROUP BY e.id
 
       ORDER BY
         CASE
-          WHEN e.status = 'active' THEN 0
+          WHEN e.status = 'active'
+          THEN 0
           ELSE 1
         END,
 
@@ -1206,17 +1772,26 @@ async function getEventsWithSummary(env) {
         ) ASC,
 
         e.created_at DESC
-    `).all();
+    `)
+      .bind(
+        archived ? 1 : 0,
+        archived ? 1 : 0
+      )
+      .all();
 
   return result.results.map(
     (row) => ({
       ...serializeEvent(row),
 
       yes_responses:
-        Number(row.yes_responses || 0),
+        Number(
+          row.yes_responses || 0
+        ),
 
       no_responses:
-        Number(row.no_responses || 0),
+        Number(
+          row.no_responses || 0
+        ),
 
       pending_responses:
         Number(
@@ -1226,6 +1801,16 @@ async function getEventsWithSummary(env) {
       people_confirmed:
         Number(
           row.people_confirmed || 0
+        ),
+
+      adults_confirmed:
+        Number(
+          row.adults_confirmed || 0
+        ),
+
+      children_confirmed:
+        Number(
+          row.children_confirmed || 0
         ),
     })
   );
@@ -1242,7 +1827,10 @@ async function getEvent(env, id) {
     .first();
 }
 
-async function getEventBySlug(env, slug) {
+async function getEventBySlug(
+  env,
+  slug
+) {
   return env.DB.prepare(`
     SELECT *
     FROM events
@@ -1271,8 +1859,11 @@ async function getEventByClientToken(
     .first();
 }
 
-async function getSummary(env, eventId) {
-  const row =
+async function getSummary(
+  env,
+  eventId
+) {
+  const guestRow =
     await env.DB.prepare(`
       SELECT
 
@@ -1298,20 +1889,7 @@ async function getSummary(env, eventId) {
             THEN 1
             ELSE 0
           END
-        ) AS pending_responses,
-
-        SUM(
-          CASE
-            WHEN response_status = 'yes'
-            THEN
-              CASE
-                WHEN COALESCE(adults, 0) + COALESCE(children, 0) < 1
-                THEN 1
-                ELSE COALESCE(adults, 0) + COALESCE(children, 0)
-              END
-            ELSE 0
-          END
-        ) AS people_confirmed
+        ) AS pending_responses
 
       FROM guests
 
@@ -1321,18 +1899,107 @@ async function getSummary(env, eventId) {
       .bind(eventId)
       .first();
 
+  const memberRow =
+    await env.DB.prepare(`
+      SELECT
+
+        COUNT(*) AS people_confirmed,
+
+        SUM(
+          CASE
+            WHEN gm.person_type = 'adult'
+            THEN 1
+            ELSE 0
+          END
+        ) AS adults_confirmed,
+
+        SUM(
+          CASE
+            WHEN gm.person_type = 'child'
+            THEN 1
+            ELSE 0
+          END
+        ) AS children_confirmed
+
+      FROM guest_members gm
+
+      INNER JOIN guests g
+        ON g.id = gm.guest_id
+
+      WHERE gm.event_id = ?
+        AND gm.deleted_at IS NULL
+        AND g.deleted_at IS NULL
+        AND g.response_status = 'yes'
+    `)
+      .bind(eventId)
+      .first();
+
   return {
     yes_responses:
-      Number(row?.yes_responses || 0),
+      Number(
+        guestRow?.yes_responses || 0
+      ),
 
     no_responses:
-      Number(row?.no_responses || 0),
+      Number(
+        guestRow?.no_responses || 0
+      ),
 
     pending_responses:
-      Number(row?.pending_responses || 0),
+      Number(
+        guestRow?.pending_responses || 0
+      ),
 
     people_confirmed:
-      Number(row?.people_confirmed || 0),
+      Number(
+        memberRow?.people_confirmed || 0
+      ),
+
+    adults_confirmed:
+      Number(
+        memberRow?.adults_confirmed || 0
+      ),
+
+    children_confirmed:
+      Number(
+        memberRow?.children_confirmed || 0
+      ),
+  };
+}
+
+function getRsvpAvailability(event) {
+  if (event.archived_at) {
+    return {
+      accepting: false,
+      reason:
+        "As confirmações deste evento estão encerradas.",
+    };
+  }
+
+  if (event.status !== "active") {
+    return {
+      accepting: false,
+      reason:
+        "As confirmações estão temporariamente pausadas.",
+    };
+  }
+
+  if (
+    event.rsvp_deadline &&
+    hasDeadlinePassed(
+      event.rsvp_deadline
+    )
+  ) {
+    return {
+      accepting: false,
+      reason:
+        "O prazo para confirmação de presença foi encerrado.",
+    };
+  }
+
+  return {
+    accepting: true,
+    reason: null,
   };
 }
 
@@ -1340,7 +2007,11 @@ async function getSummary(env, eventId) {
 // CONVIDADOS
 // =========================================================
 
-async function listGuests(env, eventId, url) {
+async function listGuests(
+  env,
+  eventId,
+  url
+) {
   const q =
     normalizeName(
       url.searchParams.get("q") || ""
@@ -1350,20 +2021,32 @@ async function listGuests(env, eventId, url) {
     url.searchParams.get("status") || "";
 
   let sql = `
-    SELECT *
-    FROM guests
-    WHERE event_id = ?
-      AND deleted_at IS NULL
+    SELECT DISTINCT g.*
+
+    FROM guests g
+
+    LEFT JOIN guest_members gm
+      ON gm.guest_id = g.id
+      AND gm.deleted_at IS NULL
+
+    WHERE g.event_id = ?
+      AND g.deleted_at IS NULL
   `;
 
   const bindings = [eventId];
 
   if (q) {
     sql += `
-      AND normalized_name LIKE ?
+      AND (
+        g.normalized_name LIKE ?
+        OR gm.normalized_name LIKE ?
+      )
     `;
 
-    bindings.push(`%${q}%`);
+    bindings.push(
+      `%${q}%`,
+      `%${q}%`
+    );
   }
 
   if (
@@ -1372,7 +2055,7 @@ async function listGuests(env, eventId, url) {
     )
   ) {
     sql += `
-      AND response_status = ?
+      AND g.response_status = ?
     `;
 
     bindings.push(status);
@@ -1380,25 +2063,24 @@ async function listGuests(env, eventId, url) {
 
   sql += `
     ORDER BY
-      CASE response_status
+
+      CASE g.response_status
         WHEN 'yes' THEN 0
         WHEN 'pending' THEN 1
         ELSE 2
       END,
 
-      primary_name COLLATE NOCASE ASC
+      g.primary_name COLLATE NOCASE ASC
   `;
 
-  const stmt =
-    env.DB.prepare(sql).bind(
-      ...bindings
-    );
-
   const result =
-    await stmt.all();
+    await env.DB.prepare(sql)
+      .bind(...bindings)
+      .all();
 
-  return result.results.map(
-    serializeGuest
+  return hydrateGuests(
+    env,
+    result.results
   );
 }
 
@@ -1410,16 +2092,66 @@ async function listGuestsRaw(
     await env.DB.prepare(`
       SELECT *
       FROM guests
+
       WHERE event_id = ?
         AND deleted_at IS NULL
-      ORDER BY primary_name COLLATE NOCASE ASC
+
+      ORDER BY
+        primary_name COLLATE NOCASE ASC
     `)
       .bind(eventId)
       .all();
 
-  return result.results.map(
-    serializeGuest
+  return hydrateGuests(
+    env,
+    result.results
   );
+}
+
+async function listDeletedGuests(
+  env,
+  eventId
+) {
+  const result =
+    await env.DB.prepare(`
+      SELECT *
+      FROM guests
+
+      WHERE event_id = ?
+        AND deleted_at IS NOT NULL
+
+      ORDER BY deleted_at DESC
+    `)
+      .bind(eventId)
+      .all();
+
+  return hydrateGuests(
+    env,
+    result.results,
+    true
+  );
+}
+
+async function getDeletedGuestRow(
+  env,
+  eventId,
+  guestId
+) {
+  return env.DB.prepare(`
+    SELECT *
+    FROM guests
+
+    WHERE id = ?
+      AND event_id = ?
+      AND deleted_at IS NOT NULL
+
+    LIMIT 1
+  `)
+    .bind(
+      guestId,
+      eventId
+    )
+    .first();
 }
 
 async function getGuest(
@@ -1431,9 +2163,11 @@ async function getGuest(
     await env.DB.prepare(`
       SELECT *
       FROM guests
+
       WHERE id = ?
         AND event_id = ?
         AND deleted_at IS NULL
+
       LIMIT 1
     `)
       .bind(
@@ -1442,9 +2176,14 @@ async function getGuest(
       )
       .first();
 
-  return row
-    ? serializeGuest(row)
-    : null;
+  if (!row) {
+    return null;
+  }
+
+  return hydrateGuest(
+    env,
+    row
+  );
 }
 
 async function createGuest(
@@ -1461,27 +2200,25 @@ async function createGuest(
   if (!primaryName) {
     throw new HttpError(
       400,
-      "Informe o nome do convidado."
+      "Informe o nome do responsável pela confirmação."
     );
   }
 
-  const id =
-    crypto.randomUUID();
+  const id = crypto.randomUUID();
 
   const status =
     allowedStatus(
       body.response_status
     );
 
-  const createdAt =
-    now();
+  const members =
+    status === "no"
+      ? []
+      : normalizeMembers(
+          body.members
+        );
 
-  const attendance =
-    normalizeAttendance(
-      status,
-      body.adults,
-      body.children
-    );
+  const createdAt = now();
 
   await env.DB.prepare(`
     INSERT INTO guests (
@@ -1496,13 +2233,15 @@ async function createGuest(
       companions,
       dietary,
       notes,
+      love_message,
       source,
       created_at,
       updated_at,
       deleted_at
     )
+
     VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL
     )
   `)
     .bind(
@@ -1512,25 +2251,44 @@ async function createGuest(
 
       primaryName,
 
-      normalizeName(primaryName),
+      normalizeName(
+        primaryName
+      ),
 
       status,
 
-      cleanNullable(body.phone),
+      cleanNullable(
+        body.phone
+      ),
 
-      attendance.adults,
+      countMembers(
+        members,
+        "adult"
+      ),
 
-      attendance.children,
+      countMembers(
+        members,
+        "child"
+      ),
 
       JSON.stringify(
-        normalizeCompanions(
-          body.companions
+        members.map(
+          (member) =>
+            member.name
         )
       ),
 
-      cleanNullable(body.dietary),
+      cleanNullable(
+        body.dietary
+      ),
 
-      cleanNullable(body.notes),
+      cleanNullable(
+        body.notes
+      ),
+
+      cleanNullable(
+        body.love_message
+      ),
 
       source,
 
@@ -1539,6 +2297,13 @@ async function createGuest(
       createdAt
     )
     .run();
+
+  await replaceGuestMembers(
+    env,
+    eventId,
+    id,
+    members
+  );
 
   return getGuest(
     env,
@@ -1573,7 +2338,7 @@ async function updateGuest(
   if (!primaryName) {
     throw new HttpError(
       400,
-      "Informe o nome do convidado."
+      "Informe o nome do responsável pela confirmação."
     );
   }
 
@@ -1583,26 +2348,18 @@ async function updateGuest(
         existing.response_status
     );
 
-  const attendance =
-    normalizeAttendance(
-      status,
-
-      body.adults ??
-        existing.adults,
-
-      body.children ??
-        existing.children
-    );
-
-  const companions =
-    body.companions === undefined
-      ? existing.companions
-      : normalizeCompanions(
-          body.companions
-        );
+  const members =
+    status === "no"
+      ? []
+      : body.members === undefined
+        ? existing.members
+        : normalizeMembers(
+            body.members
+          );
 
   await env.DB.prepare(`
     UPDATE guests
+
     SET
       primary_name = ?,
       normalized_name = ?,
@@ -1613,7 +2370,9 @@ async function updateGuest(
       companions = ?,
       dietary = ?,
       notes = ?,
+      love_message = ?,
       updated_at = ?
+
     WHERE id = ?
       AND event_id = ?
       AND deleted_at IS NULL
@@ -1621,29 +2380,51 @@ async function updateGuest(
     .bind(
       primaryName,
 
-      normalizeName(primaryName),
+      normalizeName(
+        primaryName
+      ),
 
       status,
 
       cleanNullable(
-        body.phone ??
-          existing.phone
+        body.phone !== undefined
+          ? body.phone
+          : existing.phone
       ),
 
-      attendance.adults,
+      countMembers(
+        members,
+        "adult"
+      ),
 
-      attendance.children,
+      countMembers(
+        members,
+        "child"
+      ),
 
-      JSON.stringify(companions),
-
-      cleanNullable(
-        body.dietary ??
-          existing.dietary
+      JSON.stringify(
+        members.map(
+          (member) =>
+            member.name
+        )
       ),
 
       cleanNullable(
-        body.notes ??
-          existing.notes
+        body.dietary !== undefined
+          ? body.dietary
+          : existing.dietary
+      ),
+
+      cleanNullable(
+        body.notes !== undefined
+          ? body.notes
+          : existing.notes
+      ),
+
+      cleanNullable(
+        body.love_message !== undefined
+          ? body.love_message
+          : existing.love_message
       ),
 
       now(),
@@ -1654,10 +2435,89 @@ async function updateGuest(
     )
     .run();
 
+  await replaceGuestMembers(
+    env,
+    eventId,
+    guestId,
+    members
+  );
+
   return getGuest(
     env,
     eventId,
     guestId
+  );
+}
+
+async function replaceGuestMembers(
+  env,
+  eventId,
+  guestId,
+  members
+) {
+  await env.DB.prepare(`
+    DELETE FROM guest_members
+    WHERE guest_id = ?
+  `)
+    .bind(guestId)
+    .run();
+
+  if (!members.length) {
+    return;
+  }
+
+  const createdAt = now();
+
+  const statements =
+    members.map(
+      (member, index) =>
+        env.DB.prepare(`
+          INSERT INTO guest_members (
+            id,
+            guest_id,
+            event_id,
+            name,
+            normalized_name,
+            person_type,
+            is_primary,
+            sort_order,
+            created_at,
+            updated_at,
+            deleted_at
+          )
+
+          VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL
+          )
+        `).bind(
+          crypto.randomUUID(),
+
+          guestId,
+
+          eventId,
+
+          member.name,
+
+          normalizeName(
+            member.name
+          ),
+
+          member.person_type,
+
+          index === 0
+            ? 1
+            : 0,
+
+          index,
+
+          createdAt,
+
+          createdAt
+        )
+    );
+
+  await env.DB.batch(
+    statements
   );
 }
 
@@ -1668,22 +2528,252 @@ async function softDeleteGuest(
 ) {
   const currentTime = now();
 
-  await env.DB.prepare(`
-    UPDATE guests
-    SET
-      deleted_at = ?,
-      updated_at = ?
-    WHERE id = ?
-      AND event_id = ?
-      AND deleted_at IS NULL
-  `)
-    .bind(
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE guests
+
+      SET
+        deleted_at = ?,
+        updated_at = ?
+
+      WHERE id = ?
+        AND event_id = ?
+        AND deleted_at IS NULL
+    `).bind(
       currentTime,
       currentTime,
       guestId,
       eventId
+    ),
+
+    env.DB.prepare(`
+      UPDATE guest_members
+
+      SET
+        deleted_at = ?,
+        updated_at = ?
+
+      WHERE guest_id = ?
+        AND event_id = ?
+        AND deleted_at IS NULL
+    `).bind(
+      currentTime,
+      currentTime,
+      guestId,
+      eventId
+    ),
+  ]);
+}
+
+async function restoreGuest(
+  env,
+  eventId,
+  guestId
+) {
+  const currentTime = now();
+
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE guests
+
+      SET
+        deleted_at = NULL,
+        updated_at = ?
+
+      WHERE id = ?
+        AND event_id = ?
+    `).bind(
+      currentTime,
+      guestId,
+      eventId
+    ),
+
+    env.DB.prepare(`
+      UPDATE guest_members
+
+      SET
+        deleted_at = NULL,
+        updated_at = ?
+
+      WHERE guest_id = ?
+        AND event_id = ?
+    `).bind(
+      currentTime,
+      guestId,
+      eventId
+    ),
+  ]);
+}
+
+// =========================================================
+// MEMBROS
+// =========================================================
+
+async function hydrateGuests(
+  env,
+  rows,
+  includeDeleted = false
+) {
+  if (!rows.length) {
+    return [];
+  }
+
+  const eventId =
+    rows[0].event_id;
+
+  const result =
+    await env.DB.prepare(`
+      SELECT *
+      FROM guest_members
+
+      WHERE event_id = ?
+
+      ${
+        includeDeleted
+          ? ""
+          : "AND deleted_at IS NULL"
+      }
+
+      ORDER BY
+        sort_order ASC,
+        name COLLATE NOCASE ASC
+    `)
+      .bind(eventId)
+      .all();
+
+  const map = new Map();
+
+  for (const member of result.results) {
+    if (!map.has(member.guest_id)) {
+      map.set(
+        member.guest_id,
+        []
+      );
+    }
+
+    map
+      .get(member.guest_id)
+      .push(
+        serializeMember(
+          member
+        )
+      );
+  }
+
+  return rows.map(
+    (row) =>
+      serializeGuestRow(
+        row,
+        map.get(row.id) || []
+      )
+  );
+}
+
+async function hydrateGuest(
+  env,
+  row
+) {
+  const result =
+    await env.DB.prepare(`
+      SELECT *
+      FROM guest_members
+
+      WHERE guest_id = ?
+        AND deleted_at IS NULL
+
+      ORDER BY
+        sort_order ASC,
+        name COLLATE NOCASE ASC
+    `)
+      .bind(row.id)
+      .all();
+
+  return serializeGuestRow(
+    row,
+    result.results.map(
+      serializeMember
     )
-    .run();
+  );
+}
+
+async function findDuplicateMembers(
+  env,
+  eventId,
+  members,
+  excludeGuestId = null
+) {
+  if (!members.length) {
+    return [];
+  }
+
+  const normalizedNames = [
+    ...new Set(
+      members
+        .map(
+          (member) =>
+            normalizeName(
+              member.name
+            )
+        )
+        .filter(Boolean)
+    ),
+  ];
+
+  if (!normalizedNames.length) {
+    return [];
+  }
+
+  const placeholders =
+    normalizedNames
+      .map(() => "?")
+      .join(",");
+
+  let sql = `
+    SELECT
+      gm.name,
+      gm.normalized_name,
+      gm.guest_id,
+      g.primary_name
+
+    FROM guest_members gm
+
+    INNER JOIN guests g
+      ON g.id = gm.guest_id
+
+    WHERE gm.event_id = ?
+      AND gm.deleted_at IS NULL
+      AND g.deleted_at IS NULL
+      AND gm.normalized_name IN (${placeholders})
+  `;
+
+  const bindings = [
+    eventId,
+    ...normalizedNames,
+  ];
+
+  if (excludeGuestId) {
+    sql += `
+      AND gm.guest_id != ?
+    `;
+
+    bindings.push(
+      excludeGuestId
+    );
+  }
+
+  const result =
+    await env.DB.prepare(sql)
+      .bind(...bindings)
+      .all();
+
+  return result.results.map(
+    (row) => ({
+      name: row.name,
+      guest_id: row.guest_id,
+      confirmation_name:
+        row.primary_name,
+    })
+  );
 }
 
 // =========================================================
@@ -1711,7 +2801,10 @@ async function audit(
         details,
         created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+
+      VALUES (
+        ?, ?, ?, ?, ?, ?, ?
+      )
     `)
       .bind(
         crypto.randomUUID(),
@@ -1740,10 +2833,12 @@ async function audit(
 }
 
 // =========================================================
-// ADMIN SESSION
+// SESSÃO ADMIN
 // =========================================================
 
-async function createAdminSession(env) {
+async function createAdminSession(
+  env
+) {
   const expires =
     Math.floor(Date.now() / 1000) +
     60 * 60 * 24;
@@ -1780,7 +2875,9 @@ async function isAdmin(
 
   const cookies =
     parseCookies(
-      request.headers.get("cookie") || ""
+      request.headers.get(
+        "cookie"
+      ) || ""
     );
 
   const token =
@@ -1797,14 +2894,9 @@ async function isAdmin(
     return false;
   }
 
-  const role =
-    parts[0];
-
-  const expires =
-    Number(parts[1]);
-
-  const signature =
-    parts[2];
+  const role = parts[0];
+  const expires = Number(parts[1]);
+  const signature = parts[2];
 
   if (
     role !== "admin" ||
@@ -1815,12 +2907,9 @@ async function isAdmin(
     return false;
   }
 
-  const payload =
-    `${role}.${expires}`;
-
   const expected =
     await sign(
-      payload,
+      `${role}.${expires}`,
       env.SESSION_SECRET
     );
 
@@ -1864,66 +2953,10 @@ async function sign(
     );
 
   return base64Url(
-    new Uint8Array(signature)
+    new Uint8Array(
+      signature
+    )
   );
-}
-
-// =========================================================
-// TURNSTILE
-// Se as variáveis não existirem, fica desativado.
-// =========================================================
-
-async function verifyTurnstile(
-  request,
-  env,
-  token
-) {
-  if (!env.TURNSTILE_SECRET_KEY) {
-    return true;
-  }
-
-  if (!token) {
-    return false;
-  }
-
-  const form =
-    new FormData();
-
-  form.set(
-    "secret",
-    env.TURNSTILE_SECRET_KEY
-  );
-
-  form.set(
-    "response",
-    token
-  );
-
-  const ip =
-    request.headers.get(
-      "CF-Connecting-IP"
-    );
-
-  if (ip) {
-    form.set(
-      "remoteip",
-      ip
-    );
-  }
-
-  const response =
-    await fetch(
-      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-      {
-        method: "POST",
-        body: form,
-      }
-    );
-
-  const result =
-    await response.json();
-
-  return Boolean(result.success);
 }
 
 // =========================================================
@@ -1936,39 +2969,70 @@ function csvResponse(
 ) {
   const rows = [
     [
-      "Nome",
+      "Responsável pela confirmação",
       "Status",
       "Adultos",
       "Crianças",
-      "Acompanhantes",
+      "Pessoas confirmadas",
       "Telefone",
       "Restrição alimentar",
       "Observações",
+      "Mensagem carinhosa",
       "Origem",
     ],
   ];
 
   for (const guest of guests) {
+    const adults =
+      guest.members
+        .filter(
+          (member) =>
+            member.person_type ===
+            "adult"
+        )
+        .map(
+          (member) =>
+            member.name
+        )
+        .join(" | ");
+
+    const children =
+      guest.members
+        .filter(
+          (member) =>
+            member.person_type ===
+            "child"
+        )
+        .map(
+          (member) =>
+            member.name
+        )
+        .join(" | ");
+
     rows.push([
       guest.primary_name,
 
-      guest.response_status === "yes"
+      guest.response_status ===
+      "yes"
         ? "Confirmado"
-        : guest.response_status === "no"
+        : guest.response_status ===
+            "no"
           ? "Não irá"
           : "Pendente",
 
-      guest.adults,
+      adults,
 
-      guest.children,
+      children,
 
-      guest.companions.join(" | "),
+      guest.members.length,
 
       guest.phone || "",
 
       guest.dietary || "",
 
       guest.notes || "",
+
+      guest.love_message || "",
 
       guest.source || "",
     ]);
@@ -1977,10 +3041,11 @@ function csvResponse(
   const csv =
     "\uFEFF" +
     rows
-      .map((row) =>
-        row
-          .map(csvCell)
-          .join(";")
+      .map(
+        (row) =>
+          row
+            .map(csvCell)
+            .join(";")
       )
       .join("\r\n");
 
@@ -2016,6 +3081,9 @@ function serializeEvent(row) {
   if (!row) {
     return null;
   }
+
+  const availability =
+    getRsvpAvailability(row);
 
   return {
     id: row.id,
@@ -2056,6 +3124,28 @@ function serializeEvent(row) {
 
     status:
       row.status || "active",
+
+    rsvp_deadline:
+      row.rsvp_deadline || null,
+
+    max_people_per_rsvp:
+      row.max_people_per_rsvp ===
+        null ||
+      row.max_people_per_rsvp ===
+        undefined
+        ? null
+        : Number(
+            row.max_people_per_rsvp
+          ),
+
+    archived_at:
+      row.archived_at || null,
+
+    accepting_rsvp:
+      availability.accepting,
+
+    closed_reason:
+      availability.reason,
 
     created_at:
       row.created_at,
@@ -2100,16 +3190,24 @@ function publicEvent(row) {
     extra_fields:
       event.extra_fields,
 
-    status:
-      event.status,
+    rsvp_deadline:
+      event.rsvp_deadline,
+
+    max_people_per_rsvp:
+      event.max_people_per_rsvp,
+
+    accepting_rsvp:
+      event.accepting_rsvp,
+
+    closed_reason:
+      event.closed_reason,
   };
 }
 
-function serializeGuest(row) {
-  if (!row) {
-    return null;
-  }
-
+function serializeGuestRow(
+  row,
+  members
+) {
   return {
     id: row.id,
 
@@ -2126,23 +3224,33 @@ function serializeGuest(row) {
     phone:
       row.phone || "",
 
+    members,
+
     adults:
-      Number(row.adults || 0),
+      members.filter(
+        (member) =>
+          member.person_type ===
+          "adult"
+      ).length,
 
     children:
-      Number(row.children || 0),
+      members.filter(
+        (member) =>
+          member.person_type ===
+          "child"
+      ).length,
 
-    companions:
-      safeJson(
-        row.companions,
-        []
-      ),
+    people_count:
+      members.length,
 
     dietary:
       row.dietary || "",
 
     notes:
       row.notes || "",
+
+    love_message:
+      row.love_message || "",
 
     source:
       row.source || "",
@@ -2152,7 +3260,122 @@ function serializeGuest(row) {
 
     updated_at:
       row.updated_at,
+
+    deleted_at:
+      row.deleted_at || null,
   };
+}
+
+function serializeMember(row) {
+  return {
+    id: row.id,
+
+    name: row.name,
+
+    person_type:
+      row.person_type === "child"
+        ? "child"
+        : "adult",
+
+    is_primary:
+      Boolean(row.is_primary),
+
+    sort_order:
+      Number(
+        row.sort_order || 0
+      ),
+  };
+}
+
+function serializeAudit(row) {
+  return {
+    id: row.id,
+
+    event_id:
+      row.event_id,
+
+    guest_id:
+      row.guest_id || null,
+
+    actor_role:
+      row.actor_role,
+
+    action:
+      row.action,
+
+    details:
+      safeJson(
+        row.details,
+        {}
+      ),
+
+    created_at:
+      row.created_at,
+  };
+}
+
+// =========================================================
+// NORMALIZAÇÃO
+// =========================================================
+
+function normalizeExtraFields(
+  fields
+) {
+  return {
+    phone:
+      Boolean(fields?.phone),
+
+    dietary:
+      Boolean(fields?.dietary),
+
+    notes:
+      Boolean(fields?.notes),
+
+    love_message:
+      fields?.love_message !== false,
+  };
+}
+
+function normalizeMembers(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const members = [];
+
+  for (const item of value) {
+    const name =
+      String(
+        item?.name || ""
+      ).trim();
+
+    if (!name) {
+      continue;
+    }
+
+    members.push({
+      name,
+
+      person_type:
+        item?.person_type ===
+        "child"
+          ? "child"
+          : "adult",
+    });
+  }
+
+  return members.slice(0, 100);
+}
+
+function countMembers(
+  members,
+  type
+) {
+  return members.filter(
+    (member) =>
+      member.person_type ===
+      type
+  ).length;
 }
 
 // =========================================================
@@ -2168,7 +3391,6 @@ async function uniqueSlug(
     "evento";
 
   let slug = base;
-
   let number = 1;
 
   while (true) {
@@ -2231,19 +3453,6 @@ function normalizeName(value) {
     .trim();
 }
 
-function normalizeCompanions(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((item) =>
-      String(item || "").trim()
-    )
-    .filter(Boolean)
-    .slice(0, 30);
-}
-
 function allowedStatus(value) {
   const status =
     String(
@@ -2259,45 +3468,24 @@ function allowedStatus(value) {
     : "pending";
 }
 
-function normalizeAttendance(
-  status,
-  adults,
-  children
+function normalizeOptionalInteger(
+  value,
+  min,
+  max
 ) {
-  if (status === "no") {
-    return {
-      adults: 0,
-      children: 0,
-    };
-  }
-
-  let adultCount =
-    integerBetween(
-      adults,
-      0,
-      100
-    );
-
-  const childCount =
-    integerBetween(
-      children,
-      0,
-      100
-    );
-
   if (
-    status === "yes" &&
-    adultCount +
-      childCount <
-      1
+    value === null ||
+    value === undefined ||
+    String(value).trim() === ""
   ) {
-    adultCount = 1;
+    return null;
   }
 
-  return {
-    adults: adultCount,
-    children: childCount,
-  };
+  return integerBetween(
+    value,
+    min,
+    max
+  );
 }
 
 function integerBetween(
@@ -2385,7 +3573,9 @@ function randomToken() {
   const bytes =
     new Uint8Array(32);
 
-  crypto.getRandomValues(bytes);
+  crypto.getRandomValues(
+    bytes
+  );
 
   return base64Url(bytes);
 }
@@ -2395,7 +3585,9 @@ function base64Url(bytes) {
 
   for (const byte of bytes) {
     binary +=
-      String.fromCharCode(byte);
+      String.fromCharCode(
+        byte
+      );
   }
 
   return btoa(binary)
@@ -2466,6 +3658,30 @@ function parseCookies(header) {
   return result;
 }
 
+function hasDeadlinePassed(
+  deadline
+) {
+  if (!deadline) {
+    return false;
+  }
+
+  const end =
+    new Date(
+      `${deadline}T23:59:59`
+    );
+
+  if (
+    Number.isNaN(
+      end.getTime()
+    )
+  ) {
+    return false;
+  }
+
+  return Date.now() >
+    end.getTime();
+}
+
 function now() {
   return new Date().toISOString();
 }
@@ -2505,7 +3721,7 @@ class HttpError extends Error {
 }
 
 // =========================================================
-// FRONTEND / STATIC ASSETS
+// STATIC ASSETS
 // =========================================================
 
 async function serveApp(
@@ -2526,7 +3742,9 @@ async function serveApp(
       request
     );
 
-  if (response.status !== 404) {
+  if (
+    response.status !== 404
+  ) {
     return response;
   }
 
