@@ -1,22 +1,26 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
+
   "name": "libri-rsvp",
-  "main": "./src/index.js",
+
+  "main": "src/index.js",
+
   "compatibility_date": "2026-08-15",
+
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/admin*", "/cliente/*", "/e/*"]
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
   },
+
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "libri-rsvp-db",
-      "database_id": "COLE_AQUI_O_DATABASE_ID",
-      "migrations_dir": "migrations"
+      "database_id": "83b4f425-48ae-4b08-b286-83abdae277ed"
     }
-  ],
-  "observability": {
-    "enabled": true
-  }
+  ]
 }
