@@ -17,6 +17,15 @@ export default {
     } catch (error) {
       console.error(error);
 
+      if (error instanceof HttpError) {
+        return json(
+          {
+            error: error.message,
+          },
+          error.status
+        );
+      }
+
       return json(
         {
           error: "Ocorreu um erro interno.",
@@ -109,6 +118,10 @@ async function handleApi(request, env, url) {
     }
   }
 
+  // =========================================================
+  // ADMIN - EVENTOS
+  // =========================================================
+
   if (path === "/api/admin/events" && method === "GET") {
     const events = await getEventsWithSummary(env);
 
@@ -147,6 +160,10 @@ async function handleApi(request, env, url) {
 
   let match = path.match(/^\/api\/admin\/events\/([^/]+)$/);
 
+  // =========================================================
+  // ADMIN - ABRIR EVENTO
+  // =========================================================
+
   if (match && method === "GET") {
     const eventId = decodeURIComponent(match[1]);
 
@@ -173,6 +190,141 @@ async function handleApi(request, env, url) {
         : null,
     });
   }
+
+  // =========================================================
+  // ADMIN - EDITAR EVENTO
+  // =========================================================
+
+  if (match && method === "PATCH") {
+    const eventId = decodeURIComponent(match[1]);
+
+    const current = await getEvent(env, eventId);
+
+    if (!current) {
+      return json(
+        {
+          error: "Evento não encontrado.",
+        },
+        404
+      );
+    }
+
+    const body = await bodyJson(request);
+
+    const title = String(body.title ?? current.title).trim();
+
+    if (!title) {
+      return json(
+        {
+          error: "Informe o nome do evento.",
+        },
+        400
+      );
+    }
+
+    const currentExtraFields = safeJson(
+      current.extra_fields,
+      {}
+    );
+
+    const extraFields =
+      body.extra_fields !== undefined
+        ? {
+            phone: Boolean(body.extra_fields?.phone),
+
+            adults_children:
+              body.extra_fields?.adults_children !== false,
+
+            companions:
+              body.extra_fields?.companions !== false,
+
+            dietary: Boolean(body.extra_fields?.dietary),
+
+            notes: Boolean(body.extra_fields?.notes),
+          }
+        : currentExtraFields;
+
+    const rsvpMode =
+      body.rsvp_mode === "list"
+        ? "list"
+        : body.rsvp_mode === "free"
+          ? "free"
+          : current.rsvp_mode;
+
+    await env.DB.prepare(`
+      UPDATE events
+      SET
+        title = ?,
+        event_date = ?,
+        event_time = ?,
+        rsvp_mode = ?,
+        welcome_message = ?,
+        primary_color = ?,
+        accent_color = ?,
+        extra_fields = ?,
+        updated_at = ?
+      WHERE id = ?
+    `)
+      .bind(
+        title,
+
+        cleanNullable(
+          body.event_date !== undefined
+            ? body.event_date
+            : current.event_date
+        ),
+
+        cleanNullable(
+          body.event_time !== undefined
+            ? body.event_time
+            : current.event_time
+        ),
+
+        rsvpMode,
+
+        cleanNullable(
+          body.welcome_message !== undefined
+            ? body.welcome_message
+            : current.welcome_message
+        ),
+
+        safeColor(
+          body.primary_color,
+          current.primary_color || "#6f4f5f"
+        ),
+
+        safeColor(
+          body.accent_color,
+          current.accent_color || "#f4e8ed"
+        ),
+
+        JSON.stringify(extraFields),
+
+        now(),
+
+        eventId
+      )
+      .run();
+
+    await audit(env, {
+      eventId,
+      actorRole: "admin",
+      action: "event_updated",
+      details: {
+        title,
+      },
+    });
+
+    const updated = await getEvent(env, eventId);
+
+    return json({
+      event: serializeEvent(updated),
+    });
+  }
+
+  // =========================================================
+  // ADMIN - TROCAR LINK DA CLIENTE
+  // =========================================================
 
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/client-link\/reset$/
@@ -215,6 +367,10 @@ async function handleApi(request, env, url) {
       )}`,
     });
   }
+
+  // =========================================================
+  // ADMIN - LISTAR / ADICIONAR CONVIDADOS
+  // =========================================================
 
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/guests$/
@@ -273,6 +429,10 @@ async function handleApi(request, env, url) {
       guest,
     });
   }
+
+  // =========================================================
+  // ADMIN - EDITAR / EXCLUIR CONVIDADO
+  // =========================================================
 
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/guests\/([^/]+)$/
@@ -347,6 +507,10 @@ async function handleApi(request, env, url) {
     });
   }
 
+  // =========================================================
+  // ADMIN - EXPORTAR CSV
+  // =========================================================
+
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/export\.csv$/
   );
@@ -402,6 +566,10 @@ async function handleApi(request, env, url) {
       summary,
     });
   }
+
+  // =========================================================
+  // CLIENTE - LISTAR / ADICIONAR CONVIDADOS
+  // =========================================================
 
   match = path.match(
     /^\/api\/client\/([^/]+)\/guests$/
@@ -465,6 +633,10 @@ async function handleApi(request, env, url) {
       guest,
     });
   }
+
+  // =========================================================
+  // CLIENTE - EDITAR / EXCLUIR CONVIDADO
+  // =========================================================
 
   match = path.match(
     /^\/api\/client\/([^/]+)\/guests\/([^/]+)$/
@@ -569,6 +741,10 @@ async function handleApi(request, env, url) {
     });
   }
 
+  // =========================================================
+  // CLIENTE - EXPORTAR
+  // =========================================================
+
   match = path.match(
     /^\/api\/client\/([^/]+)\/export\.csv$/
   );
@@ -599,7 +775,7 @@ async function handleApi(request, env, url) {
   }
 
   // =========================================================
-  // PÚBLICO
+  // PÚBLICO - EVENTO
   // =========================================================
 
   match = path.match(
@@ -627,6 +803,10 @@ async function handleApi(request, env, url) {
         env.TURNSTILE_SITE_KEY || null,
     });
   }
+
+  // =========================================================
+  // PÚBLICO - BUSCAR NOME NA LISTA
+  // =========================================================
 
   match = path.match(
     /^\/api\/public\/events\/([^/]+)\/lookup$/
@@ -658,8 +838,7 @@ async function handleApi(request, env, url) {
 
     const body = await bodyJson(request);
 
-    const normalized =
-      normalizeName(body.name || "");
+    const normalized = normalizeName(body.name || "");
 
     if (!normalized) {
       return json(
@@ -696,6 +875,10 @@ async function handleApi(request, env, url) {
       guest: serializeGuest(guest),
     });
   }
+
+  // =========================================================
+  // PÚBLICO - CONFIRMAR PRESENÇA
+  // =========================================================
 
   match = path.match(
     /^\/api\/public\/events\/([^/]+)\/rsvp$/
@@ -880,12 +1063,16 @@ async function createEvent(env, body) {
 
   const extraFields = {
     phone: Boolean(body.extra_fields?.phone),
+
     adults_children:
       body.extra_fields?.adults_children !== false,
+
     companions:
       body.extra_fields?.companions !== false,
+
     dietary:
       Boolean(body.extra_fields?.dietary),
+
     notes:
       Boolean(body.extra_fields?.notes),
   };
@@ -914,26 +1101,39 @@ async function createEvent(env, body) {
       id,
       String(body.title).trim(),
       slug,
+
       cleanNullable(body.event_date),
+
       cleanNullable(body.event_time),
+
       body.rsvp_mode === "list"
         ? "list"
         : "free",
-      cleanNullable(body.welcome_message),
+
+      cleanNullable(
+        body.welcome_message
+      ),
+
       safeColor(
         body.primary_color,
         "#6f4f5f"
       ),
+
       safeColor(
         body.accent_color,
         "#f4e8ed"
       ),
+
       cleanNullable(
         body.background_image_url
       ),
+
       JSON.stringify(extraFields),
+
       clientToken,
+
       createdAt,
+
       createdAt
     )
     .run();
@@ -999,21 +1199,36 @@ async function getEventsWithSummary(env) {
           WHEN e.status = 'active' THEN 0
           ELSE 1
         END,
-        COALESCE(e.event_date, '9999-12-31') ASC,
+
+        COALESCE(
+          e.event_date,
+          '9999-12-31'
+        ) ASC,
+
         e.created_at DESC
     `).all();
 
-  return result.results.map(row => ({
-    ...serializeEvent(row),
-    yes_responses:
-      Number(row.yes_responses || 0),
-    no_responses:
-      Number(row.no_responses || 0),
-    pending_responses:
-      Number(row.pending_responses || 0),
-    people_confirmed:
-      Number(row.people_confirmed || 0),
-  }));
+  return result.results.map(
+    (row) => ({
+      ...serializeEvent(row),
+
+      yes_responses:
+        Number(row.yes_responses || 0),
+
+      no_responses:
+        Number(row.no_responses || 0),
+
+      pending_responses:
+        Number(
+          row.pending_responses || 0
+        ),
+
+      people_confirmed:
+        Number(
+          row.people_confirmed || 0
+        ),
+    })
+  );
 }
 
 async function getEvent(env, id) {
@@ -1109,10 +1324,13 @@ async function getSummary(env, eventId) {
   return {
     yes_responses:
       Number(row?.yes_responses || 0),
+
     no_responses:
       Number(row?.no_responses || 0),
+
     pending_responses:
       Number(row?.pending_responses || 0),
+
     people_confirmed:
       Number(row?.people_confirmed || 0),
   };
@@ -1167,11 +1385,14 @@ async function listGuests(env, eventId, url) {
         WHEN 'pending' THEN 1
         ELSE 2
       END,
+
       primary_name COLLATE NOCASE ASC
   `;
 
   const stmt =
-    env.DB.prepare(sql).bind(...bindings);
+    env.DB.prepare(sql).bind(
+      ...bindings
+    );
 
   const result =
     await stmt.all();
@@ -1286,22 +1507,35 @@ async function createGuest(
   `)
     .bind(
       id,
+
       eventId,
+
       primaryName,
+
       normalizeName(primaryName),
+
       status,
+
       cleanNullable(body.phone),
+
       attendance.adults,
+
       attendance.children,
+
       JSON.stringify(
         normalizeCompanions(
           body.companions
         )
       ),
+
       cleanNullable(body.dietary),
+
       cleanNullable(body.notes),
+
       source,
+
       createdAt,
+
       createdAt
     )
     .run();
@@ -1352,8 +1586,10 @@ async function updateGuest(
   const attendance =
     normalizeAttendance(
       status,
+
       body.adults ??
         existing.adults,
+
       body.children ??
         existing.children
     );
@@ -1384,25 +1620,36 @@ async function updateGuest(
   `)
     .bind(
       primaryName,
+
       normalizeName(primaryName),
+
       status,
+
       cleanNullable(
         body.phone ??
           existing.phone
       ),
+
       attendance.adults,
+
       attendance.children,
+
       JSON.stringify(companions),
+
       cleanNullable(
         body.dietary ??
           existing.dietary
       ),
+
       cleanNullable(
         body.notes ??
           existing.notes
       ),
+
       now(),
+
       guestId,
+
       eventId
     )
     .run();
@@ -1419,6 +1666,8 @@ async function softDeleteGuest(
   eventId,
   guestId
 ) {
+  const currentTime = now();
+
   await env.DB.prepare(`
     UPDATE guests
     SET
@@ -1429,8 +1678,8 @@ async function softDeleteGuest(
       AND deleted_at IS NULL
   `)
     .bind(
-      now(),
-      now(),
+      currentTime,
+      currentTime,
       guestId,
       eventId
     )
@@ -1466,13 +1715,19 @@ async function audit(
     `)
       .bind(
         crypto.randomUUID(),
+
         eventId,
+
         guestId,
+
         actorRole,
+
         action,
+
         details
           ? JSON.stringify(details)
           : null,
+
         now()
       )
       .run();
@@ -1582,20 +1837,30 @@ async function sign(
   const key =
     await crypto.subtle.importKey(
       "raw",
-      new TextEncoder().encode(secret),
+
+      new TextEncoder().encode(
+        secret
+      ),
+
       {
         name: "HMAC",
         hash: "SHA-256",
       },
+
       false,
+
       ["sign"]
     );
 
   const signature =
     await crypto.subtle.sign(
       "HMAC",
+
       key,
-      new TextEncoder().encode(value)
+
+      new TextEncoder().encode(
+        value
+      )
     );
 
   return base64Url(
@@ -1605,6 +1870,7 @@ async function sign(
 
 // =========================================================
 // TURNSTILE
+// Se as variáveis não existirem, fica desativado.
 // =========================================================
 
 async function verifyTurnstile(
@@ -1685,17 +1951,25 @@ function csvResponse(
   for (const guest of guests) {
     rows.push([
       guest.primary_name,
+
       guest.response_status === "yes"
         ? "Confirmado"
         : guest.response_status === "no"
           ? "Não irá"
           : "Pendente",
+
       guest.adults,
+
       guest.children,
+
       guest.companions.join(" | "),
+
       guest.phone || "",
+
       guest.dietary || "",
+
       guest.notes || "",
+
       guest.source || "",
     ]);
   }
@@ -1703,7 +1977,7 @@ function csvResponse(
   const csv =
     "\uFEFF" +
     rows
-      .map(row =>
+      .map((row) =>
         row
           .map(csvCell)
           .join(";")
@@ -1714,8 +1988,10 @@ function csvResponse(
     headers: {
       "content-type":
         "text/csv; charset=utf-8",
+
       "content-disposition":
         `attachment; filename="${filename}"`,
+
       "cache-control":
         "no-store",
     },
@@ -1743,34 +2019,47 @@ function serializeEvent(row) {
 
   return {
     id: row.id,
+
     title: row.title,
+
     slug: row.slug,
+
     event_date:
       row.event_date || null,
+
     event_time:
       row.event_time || null,
+
     rsvp_mode:
       row.rsvp_mode || "free",
+
     welcome_message:
       row.welcome_message || "",
+
     primary_color:
       row.primary_color ||
       "#6f4f5f",
+
     accent_color:
       row.accent_color ||
       "#f4e8ed",
+
     background_image_url:
       row.background_image_url ||
       "",
+
     extra_fields:
       safeJson(
         row.extra_fields,
         {}
       ),
+
     status:
       row.status || "active",
+
     created_at:
       row.created_at,
+
     updated_at:
       row.updated_at,
   };
@@ -1782,24 +2071,35 @@ function publicEvent(row) {
 
   return {
     id: event.id,
+
     title: event.title,
+
     slug: event.slug,
+
     event_date:
       event.event_date,
+
     event_time:
       event.event_time,
+
     rsvp_mode:
       event.rsvp_mode,
+
     welcome_message:
       event.welcome_message,
+
     primary_color:
       event.primary_color,
+
     accent_color:
       event.accent_color,
+
     background_image_url:
       event.background_image_url,
+
     extra_fields:
       event.extra_fields,
+
     status:
       event.status,
   };
@@ -1812,32 +2112,44 @@ function serializeGuest(row) {
 
   return {
     id: row.id,
+
     event_id:
       row.event_id,
+
     primary_name:
       row.primary_name,
+
     response_status:
       row.response_status ||
       "pending",
+
     phone:
       row.phone || "",
+
     adults:
       Number(row.adults || 0),
+
     children:
       Number(row.children || 0),
+
     companions:
       safeJson(
         row.companions,
         []
       ),
+
     dietary:
       row.dietary || "",
+
     notes:
       row.notes || "",
+
     source:
       row.source || "",
+
     created_at:
       row.created_at,
+
     updated_at:
       row.updated_at,
   };
@@ -1857,7 +2169,7 @@ async function uniqueSlug(
 
   let slug = base;
 
-  let n = 1;
+  let number = 1;
 
   while (true) {
     const exists =
@@ -1874,10 +2186,10 @@ async function uniqueSlug(
       return slug;
     }
 
-    n += 1;
+    number += 1;
 
     slug =
-      `${base}-${n}`;
+      `${base}-${number}`;
   }
 }
 
@@ -1925,7 +2237,7 @@ function normalizeCompanions(value) {
   }
 
   return value
-    .map(item =>
+    .map((item) =>
       String(item || "").trim()
     )
     .filter(Boolean)
@@ -2082,7 +2394,8 @@ function base64Url(bytes) {
   let binary = "";
 
   for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+    binary +=
+      String.fromCharCode(byte);
   }
 
   return btoa(binary)
@@ -2112,13 +2425,13 @@ function safeEqual(a, b) {
   let diff = 0;
 
   for (
-    let i = 0;
-    i < a.length;
-    i++
+    let index = 0;
+    index < a.length;
+    index++
   ) {
     diff |=
-      a.charCodeAt(i) ^
-      b.charCodeAt(i);
+      a.charCodeAt(index) ^
+      b.charCodeAt(index);
   }
 
   return diff === 0;
@@ -2174,6 +2487,7 @@ function json(
     JSON.stringify(data),
     {
       status,
+
       headers: {
         ...JSON_HEADERS,
         ...headers,
@@ -2185,6 +2499,7 @@ function json(
 class HttpError extends Error {
   constructor(status, message) {
     super(message);
+
     this.status = status;
   }
 }
