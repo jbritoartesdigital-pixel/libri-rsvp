@@ -1,8 +1,8 @@
 const app=document.querySelector("#app"),toastEl=document.querySelector("#toast"),path=location.pathname;
-let toastTimer,suggestTimer;
+let toastTimer,suggestTimer,appearanceDirty=false;
 
-const DEFAULT_APPEARANCE={background_color:"#f8efec",card_color:"#fffaf7",text_color:"#4f2d2a",muted_color:"#866e68",button_color:"#b8735f",button_text_color:"#ffffff",overlay_color:"#3a1f1b",overlay_opacity:.18,card_opacity:.94,card_blur:12,card_radius:28,font_style:"elegant",card_style:"glass",cover_url:"",logo_url:""};
-const DEFAULT_TEXTS={eyebrow:"Confirmação de presença",intro:"Confirme sua presença para que tudo seja preparado com carinho.",lookup_label:"Digite seu nome",lookup_placeholder:"Comece a digitar seu nome",yes_button:"Sim, estarei presente!",no_button:"Não poderei comparecer",message_label:"Deixe uma mensagem carinhosa 💌",message_placeholder:"Uma mensagem especial para quem está celebrando...",success_title:"Presença confirmada!",success_message:"Que bom ter você com a gente. 💛",decline_title:"Resposta registrada",decline_message:"Obrigada por avisar.",closed_title:"Confirmações encerradas"};
+const DEFAULT_APPEARANCE={background_color:"#f8efec",card_color:"#fffaf7",text_color:"#4f2d2a",muted_color:"#866e68",button_color:"#b8735f",button_text_color:"#ffffff",overlay_color:"#3a1f1b",overlay_opacity:.18,card_opacity:.94,card_blur:12,card_radius:28,font_style:"elegant",card_style:"glass",background_position:"center",card_width:"medium",cover_url:"",logo_url:""};
+const DEFAULT_TEXTS={eyebrow:"Confirmação de presença",intro:"Confirme sua presença para que tudo seja preparado com carinho.",lookup_label:"Digite seu nome",lookup_placeholder:"Comece a digitar seu nome",yes_button:"Sim, estarei presente!",no_button:"Não poderei comparecer",message_label:"Deixe uma mensagem carinhosa 💌",message_placeholder:"Uma mensagem especial para quem está celebrando...",success_title:"Presença confirmada!",success_message:"Que bom ter você com a gente. 💛",decline_title:"Resposta registrada",decline_message:"Obrigada por avisar.",decline_hint:"Tudo bem 💛 Se quiser, você ainda pode deixar uma mensagem carinhosa abaixo.",name_label:"Seu nome",closed_title:"Confirmações encerradas"};
 const DEFAULT_PERMS={manage_guests:true,manage_appearance:true,manage_texts:true,view_messages:true,export_guests:true,manage_event_details:false};
 
 const esc=(v="")=>String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -24,6 +24,29 @@ const normalizeHex=v=>{
  if(!/^[0-9a-f]{6}$/i.test(h))return null;
  return`#${h.toUpperCase()}`;
 };
+
+const bgPositionCss=v=>v==="top"?"center top":v==="bottom"?"center bottom":"center center";
+const publicCardWidthCss=v=>v==="narrow"?"min(82vw,430px)":v==="wide"?"min(94vw,590px)":"min(88vw,510px)";
+const previewInset=v=>v==="narrow"?24:v==="wide"?8:16;
+
+function setAppearanceDirty(value=true){
+ appearanceDirty=Boolean(value);
+ window.onbeforeunload=appearanceDirty?()=>"":null;
+ const el=document.querySelector("#appearanceUnsaved");
+ if(el){
+  el.className=`unsaved-indicator ${appearanceDirty?"dirty":"saved"}`;
+  el.textContent=appearanceDirty?"● Alterações não salvas":"✓ Tudo salvo";
+ }
+}
+
+function canLeaveAppearance(){
+ if(!appearanceDirty)return true;
+ if(confirm("Você tem alterações de aparência que ainda não foram salvas. Deseja sair mesmo assim?")){
+  setAppearanceDirty(false);
+  return true;
+ }
+ return false;
+}
 
 async function api(url,options={}){
  const headers={...(options.headers||{})};
@@ -81,7 +104,7 @@ function eventForm(e=null){
  <div class="form-section"><div class="field"><label>Tipo</label><select name="rsvp_mode"><option value="free" ${!e||e.rsvp_mode==="free"?"selected":""}>Confirmação livre</option><option value="list" ${e?.rsvp_mode==="list"?"selected":""}>Lista fechada</option></select></div><div class="field"><label>Lista fechada</label><select name="list_behavior"><option value="strict" ${e?.list_behavior!=="flexible"?"selected":""}>Estrita • só cadastrados</option><option value="flexible" ${e?.list_behavior==="flexible"?"selected":""}>Flexível • permite adicionar até o limite</option></select></div>
  <div class="row"><div class="field"><label>Prazo</label><input type="date" name="rsvp_deadline" value="${esc(e?.rsvp_deadline||"")}"></div><div class="field"><label>Limite padrão</label><input type="number" min="1" max="100" name="max_people_per_rsvp" value="${esc(e?.max_people_per_rsvp??"")}" placeholder="Sem limite"></div></div></div>
  <div class="form-section"><h3>Campos opcionais</h3><div class="checks">${checkbox("phone","Telefone",f.phone)}${checkbox("dietary","Restrição alimentar",f.dietary)}${checkbox("notes","Observações",f.notes)}${checkbox("love_message","Mensagem carinhosa 💌",e?f.love_message!==false:true)}</div></div>
- <div class="form-section"><h3>Permissões da cliente</h3><div class="checks">${checkbox("pmg","Cadastrar e editar convidados",p.manage_guests)}${checkbox("pma","Editar aparência e enviar mídia",p.manage_appearance)}${checkbox("pmt","Editar textos",p.manage_texts)}${checkbox("pvm","Ver mensagens",p.view_messages)}${checkbox("peg","Exportar CSV",p.export_guests)}${checkbox("ped","Editar data, horário e mensagem",p.manage_event_details)}</div></div>
+ <div class="form-section"><h3>Permissões do painel privado</h3><div class="checks">${checkbox("pmg","Cadastrar e editar convidados",p.manage_guests)}${checkbox("pma","Editar aparência e enviar mídia",p.manage_appearance)}${checkbox("pmt","Editar textos",p.manage_texts)}${checkbox("pvm","Ver mensagens",p.view_messages)}${checkbox("peg","Exportar CSV",p.export_guests)}${checkbox("ped","Editar data, horário e mensagem",p.manage_event_details)}</div></div>
  <button class="btn block large">${e?"Salvar alterações":"Criar evento"}</button></form>`;
 }
 function eventPayload(form,e=null){const d=new FormData(form);return{title:d.get("title"),event_date:d.get("event_date"),event_time:d.get("event_time"),welcome_message:d.get("welcome_message"),rsvp_mode:d.get("rsvp_mode"),list_behavior:d.get("list_behavior"),rsvp_deadline:d.get("rsvp_deadline"),max_people_per_rsvp:d.get("max_people_per_rsvp"),primary_color:e?.primary_color||"#b8735f",accent_color:e?.accent_color||"#f8efec",background_type:e?.background_type||"none",background_image_url:e?.background_image_url||"",background_video_url:e?.background_video_url||"",appearance_settings:e?.appearance_settings||DEFAULT_APPEARANCE,public_texts:e?.public_texts||DEFAULT_TEXTS,extra_fields:{phone:d.has("phone"),dietary:d.has("dietary"),notes:d.has("notes"),love_message:d.has("love_message")},client_permissions:{manage_guests:d.has("pmg"),manage_appearance:d.has("pma"),manage_texts:d.has("pmt"),view_messages:d.has("pvm"),export_guests:d.has("peg"),manage_event_details:d.has("ped")}}}
@@ -90,16 +113,16 @@ function eventModal(e=null){
  w.querySelector("#eventForm").onsubmit=async ev=>{ev.preventDefault();const b=ev.submitter;b.disabled=true;try{const r=await api(e?`/api/admin/events/${e.id}`:"/api/admin/events",{method:e?"PATCH":"POST",body:JSON.stringify(eventPayload(ev.currentTarget,e))});w.closeModal();toast(e?"Evento atualizado.":"Evento criado. ✨");renderAdminEvent(r.event.id,e?"settings":"overview")}catch(err){toast(err.message,true);b.disabled=false}};
 }
 
-function eventHeader(e,client=false){return`<section class="event-head" style="background:linear-gradient(135deg,${esc(e.primary_color||"#b8735f")},${esc(e.accent_color||"#f8efec")})"><div class="eyebrow" style="color:#fff">${client?"PAINEL DA CLIENTE":"PAINEL LIBRI"}</div><h1>${esc(e.title)}</h1><p>${fmtDate(e.event_date)}${e.event_time?` • ${esc(e.event_time)}`:""} • ${e.rsvp_mode==="list"?"Lista fechada":"Confirmação livre"}</p></section>`}
+function eventHeader(e,client=false){return`<section class="event-head" style="background:linear-gradient(135deg,${esc(e.primary_color||"#b8735f")},${esc(e.accent_color||"#f8efec")})"><div class="eyebrow" style="color:#fff">${client?"PAINEL PRIVADO":"PAINEL LIBRI"}</div><h1>${esc(e.title)}</h1><p>${fmtDate(e.event_date)}${e.event_time?` • ${esc(e.event_time)}`:""} • ${e.rsvp_mode==="list"?"Lista fechada":"Confirmação livre"}</p></section>`}
 
 async function renderAdminEvent(id,tab="overview"){
  const info=await api(`/api/admin/events/${id}`),e=info.event,s=info.summary;brand(e);
  const tabs=[["overview","Visão geral"],["guests","Convidados"],["messages","Mensagens"],["appearance","Aparência"],["settings","Configurações"]];
  app.innerHTML=`<main class="shell">${topbar(`<div class="actions"><button class="btn secondary small" id="back">← Eventos</button><button class="btn secondary small" id="openPublic">Ver RSVP</button></div>`)}${eventHeader(e)}
  <div class="tabs-shell"><div class="tabs">${tabs.map(([k,l])=>`<button class="tab${tab===k?" active":""}" data-tab="${k}">${l}</button>`).join("")}</div></div><div id="tabRoot">${loading()}</div></main>`;
- document.querySelector("#back").onclick=()=>renderAdminDashboard();
+ document.querySelector("#back").onclick=()=>{if(canLeaveAppearance())renderAdminDashboard()};
  document.querySelector("#openPublic").onclick=()=>window.open(info.public_url,"_blank","noopener");
- document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>renderAdminEvent(id,b.dataset.tab));
+ document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{if(b.dataset.tab===tab||canLeaveAppearance())renderAdminEvent(id,b.dataset.tab)});
  const root=document.querySelector("#tabRoot");
  if(tab==="guests")return guestsTab({root,event:e,role:"admin",eventId:id});
  if(tab==="messages")return messagesTab({root,event:e,role:"admin",eventId:id});
@@ -112,7 +135,7 @@ function overview(root,e,s,info,role){
  root.innerHTML=`<div class="overview-stats"><div class="overview-stat primary"><span>Pessoas confirmadas</span><strong>${s.people_confirmed||0}</strong></div><div class="overview-stat"><span>Adultos</span><strong>${s.adults_confirmed||0}</strong></div><div class="overview-stat"><span>Crianças</span><strong>${s.children_confirmed||0}</strong></div><div class="overview-stat"><span>Aguardando</span><strong>${s.pending_responses||0}</strong></div></div>
  <section class="card panel progress-card" style="margin-top:14px"><div class="progress-head"><div><strong>${pct}% da lista já respondeu</strong><div class="subtle">${s.people_registered||0} pessoa(s) cadastrada(s)</div></div></div><div class="progress-track"><div class="progress-bar" style="--progress:${pct}%"></div></div></section>
  ${e.rsvp_mode==="list"?`<section class="guide-card" style="margin-top:14px"><div class="guide-icon">✦</div><div><h3>Como funciona a lista?</h3><p>Cadastre as pessoas autorizadas. No convite, basta começar a digitar o nome e escolher a sugestão correta. ${e.list_behavior==="flexible"?"Nesta lista, também é possível acrescentar pessoas até o limite permitido.":"Nesta lista, somente os nomes cadastrados podem responder."}</p></div></section>`:""}
- ${role==="admin"?`<div class="grid two" style="margin-top:14px"><section class="card panel"><h3>Link público</h3><div class="codebox">${esc(info.public_url)}</div><div class="actions" style="margin-top:9px"><button class="btn secondary small" id="cpub">Copiar</button></div></section><section class="card panel"><h3>Painel da cliente</h3><div class="codebox">${esc(info.client_url||"Indisponível")}</div><div class="actions" style="margin-top:9px"><button class="btn secondary small" id="ccli">Copiar</button></div></section></div>`:""}`;
+ ${role==="admin"?`<div class="grid two" style="margin-top:14px"><section class="card panel"><h3>Link público</h3><div class="codebox">${esc(info.public_url)}</div><div class="actions" style="margin-top:9px"><button class="btn secondary small" id="cpub">Copiar</button></div></section><section class="card panel"><h3>Painel privado</h3><div class="codebox">${esc(info.client_url||"Indisponível")}</div><div class="actions" style="margin-top:9px"><button class="btn secondary small" id="ccli">Copiar</button></div></section></div>`:""}`;
  if(role==="admin"){root.querySelector("#cpub").onclick=()=>copy(info.public_url);root.querySelector("#ccli").onclick=()=>copy(info.client_url)}
 }
 
@@ -170,6 +193,7 @@ async function exportEventPdf({event,base}){
  win.document.close();
 
  try{
+  const pdfAppearance=safeAppearance(event);
   const guestsData=await api(`${base}/guests?q=&status=`);
   let messages=[];
 
@@ -250,15 +274,16 @@ async function exportEventPdf({event,base}){
   *{box-sizing:border-box}
   body{margin:0;color:#4b302c;background:#fff;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.45}
   .page{max-width:900px;margin:0 auto}
-  .header{padding:22px 24px;border:1px solid #eadbd5;border-radius:20px;background:linear-gradient(135deg,#fff8f4,#f6e8e2)}
-  .brand{font-family:Georgia,serif;font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:#a46454}
-  h1{margin:8px 0 4px;font-family:Georgia,serif;font-size:30px;font-weight:500;color:#6d4037}
+  .header{padding:22px 24px;border:1px solid ${pdfAppearance.button_color}33;border-radius:20px;background:linear-gradient(135deg,${pdfAppearance.card_color},#ffffff)}
+  .event-logo{display:block;max-width:110px;max-height:80px;object-fit:contain;margin:0 0 12px}
+  .brand{font-family:Georgia,serif;font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:${pdfAppearance.button_color}}
+  h1{margin:8px 0 4px;font-family:Georgia,serif;font-size:30px;font-weight:500;color:${pdfAppearance.text_color}}
   .event-date{color:#806a64;font-size:12px}
   .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0 22px}
   .stat{padding:12px 10px;border:1px solid #eadbd5;border-radius:13px;background:#fffaf7;text-align:center}
-  .stat b{display:block;font-size:20px;color:#704338}
+  .stat b{display:block;font-size:20px;color:${pdfAppearance.button_color}}
   .stat span{display:block;margin-top:3px;color:#8b746e;font-size:9px}
-  h2{margin:26px 0 12px;padding-bottom:7px;border-bottom:1px solid #dfc9c1;font-family:Georgia,serif;font-size:20px;font-weight:500;color:#74483e}
+  h2{margin:26px 0 12px;padding-bottom:7px;border-bottom:1px solid ${pdfAppearance.button_color}44;font-family:Georgia,serif;font-size:20px;font-weight:500;color:${pdfAppearance.text_color}}
   .family{break-inside:avoid;margin:0 0 10px;padding:13px 14px;border:1px solid #eadbd5;border-radius:14px}
   .family-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px}
   .family h3{margin:0;font-size:14px;color:#533530}
@@ -280,7 +305,7 @@ async function exportEventPdf({event,base}){
   .message-author{margin-top:8px;color:#8b746e;font-size:9px}
   .footer{margin-top:26px;padding-top:10px;border-top:1px solid #eadbd5;color:#9a8580;font-size:8px;text-align:center}
   .empty{padding:16px;border:1px dashed #dcc7c0;border-radius:12px;color:#8b746e;text-align:center}
-  .print-btn{position:fixed;right:18px;bottom:18px;padding:11px 16px;border:0;border-radius:12px;background:#8b5368;color:white;font-weight:700;box-shadow:0 8px 24px rgba(60,30,35,.2);cursor:pointer}
+  .print-btn{position:fixed;right:18px;bottom:18px;padding:11px 16px;border:0;border-radius:12px;background:${pdfAppearance.button_color};color:${pdfAppearance.button_text_color};font-weight:700;box-shadow:0 8px 24px rgba(60,30,35,.2);cursor:pointer}
   @media print{.print-btn{display:none}.page{max-width:none}.family,.message{box-shadow:none}}
   @media(max-width:650px){.stats{grid-template-columns:repeat(2,1fr)}.stats .stat:first-child{grid-column:1/-1}}
  </style>
@@ -288,6 +313,7 @@ async function exportEventPdf({event,base}){
 <body>
  <div class="page">
   <header class="header">
+   ${pdfAppearance.logo_url?`<img class="event-logo" src="${esc(pdfAppearance.logo_url)}" alt="">`:""}
    <div class="brand">Libri RSVP</div>
    <h1>${esc(event.title)}</h1>
    <div class="event-date">${esc(fmtDate(event.event_date))}${event.event_time?` • ${esc(event.event_time)}`:""}</div>
@@ -346,10 +372,10 @@ async function appearanceTab({root,event,role,eventId,token,allowAppearance,allo
  if(!allowAppearance&&!allowTexts){root.innerHTML=`<div class="empty">Personalização bloqueada para este evento.</div>`;return}
  const a=safeAppearance(event),t=safeTexts(event),base=role==="admin"?`/api/admin/events/${eventId}`:`/api/client/${encodeURIComponent(token)}`;let media=[];
  if(allowAppearance){try{media=(await api(`${base}/media`)).media||[]}catch{}}
- root.innerHTML=`<div class="appearance-layout"><div class="appearance-controls">${allowAppearance?appearanceControls(event,a,media):""}${allowTexts?textControls(t):""}<button class="btn block large" id="saveAppearance">Salvar personalização</button></div><aside class="appearance-preview"><div class="section-title" style="margin-top:0"><div><h3>Como o convidado verá</h3><span class="subtle">Prévia no celular.</span></div></div><div class="preview-wrap"><div id="preview"></div></div></aside></div>`;
+ root.innerHTML=`<div class="appearance-layout"><div class="appearance-controls">${allowAppearance?appearanceControls(event,a,media):""}${allowTexts?textControls(t):""}<div class="appearance-save-row"><span id="appearanceUnsaved" class="unsaved-indicator saved">✓ Tudo salvo</span><button class="btn large" id="saveAppearance">Salvar personalização</button></div></div><aside class="appearance-preview" id="appearancePreview"><div class="preview-floating-head"><div><h3>Como o convidado verá</h3><span class="subtle">Acompanha você durante a edição.</span></div><div class="preview-actions"><button class="icon-btn" type="button" id="previewToggle" title="Recolher prévia">−</button><button class="icon-btn" type="button" id="previewExpand" title="Ampliar prévia">⛶</button></div></div><div class="preview-wrap"><div id="preview"></div></div></aside></div>`;
  const state={event:clone(event),appearance:{...a},texts:{...t}},refresh=()=>root.querySelector("#preview").innerHTML=previewHtml(state);refresh();
  if(allowAppearance){
-  root.querySelectorAll('input[type="color"],input[type="range"],select[name="background_type"],select[name="card_style"]').forEach(i=>i.oninput=()=>{
+  root.querySelectorAll('input[type="color"],input[type="range"],select[name="background_type"],select[name="background_position"],select[name="card_width"],select[name="card_style"]').forEach(i=>i.oninput=()=>{
    if(i.name==="background_type")state.event.background_type=i.value;
    else state.appearance[i.name]=i.type==="range"?Number(i.value):i.value;
 
@@ -363,6 +389,7 @@ async function appearanceTab({root,event,role,eventId,token,allowAppearance,allo
    const o=root.querySelector(`[data-output="${i.name}"]`);
    if(o)o.textContent=["overlay_opacity","card_opacity"].includes(i.name)?`${Math.round(Number(i.value)*100)}%`:`${i.value}px`;
    refresh();
+   setAppearanceDirty(true);
   });
 
   root.querySelectorAll("[data-color-text]").forEach(i=>{
@@ -394,6 +421,7 @@ async function appearanceTab({root,event,role,eventId,token,allowAppearance,allo
     state.appearance[colorName]=hex;
     if(label)label.textContent=hex;
     refresh();
+    setAppearanceDirty(true);
    };
 
    i.onblur=()=>{
@@ -403,30 +431,47 @@ async function appearanceTab({root,event,role,eventId,token,allowAppearance,allo
     }
    };
   });
-  root.querySelectorAll("[data-font]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-font]").forEach(x=>x.classList.remove("active"));b.classList.add("active");root.querySelector('[name="font_style"]').value=b.dataset.font;state.appearance.font_style=b.dataset.font;refresh()});
-  root.querySelectorAll("[data-upload]").forEach(i=>i.onchange=async()=>{const file=i.files?.[0];if(!file)return;const fd=new FormData();fd.append("file",file);fd.append("kind",i.dataset.upload);try{const r=await api(`${base}/media`,{method:"POST",body:fd});toast("Mídia enviada.");appearanceTab({root,event:r.event,role,eventId,token,allowAppearance,allowTexts})}catch(e){toast(e.message,true)}});
-  root.querySelectorAll("[data-delmedia]").forEach(b=>b.onclick=async()=>{if(!confirm("Remover esta mídia?"))return;try{const r=await api(`${base}/media/${b.dataset.delmedia}`,{method:"DELETE",body:"{}"});toast("Mídia removida.");appearanceTab({root,event:r.event,role,eventId,token,allowAppearance,allowTexts})}catch(e){toast(e.message,true)}})
+  root.querySelectorAll("[data-font]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-font]").forEach(x=>x.classList.remove("active"));b.classList.add("active");root.querySelector('[name="font_style"]').value=b.dataset.font;state.appearance.font_style=b.dataset.font;refresh();setAppearanceDirty(true)});
+  root.querySelectorAll("[data-upload]").forEach(i=>i.onchange=async()=>{const file=i.files?.[0];if(!file)return;if(appearanceDirty){i.value="";return toast("Salve as alterações atuais antes de enviar uma nova mídia.",true)}const fd=new FormData();fd.append("file",file);fd.append("kind",i.dataset.upload);try{const r=await api(`${base}/media`,{method:"POST",body:fd});toast("Mídia enviada.");setAppearanceDirty(false);appearanceTab({root,event:r.event,role,eventId,token,allowAppearance,allowTexts})}catch(e){toast(e.message,true)}});
+  root.querySelectorAll("[data-delmedia]").forEach(b=>b.onclick=async()=>{if(appearanceDirty)return toast("Salve as alterações atuais antes de remover uma mídia.",true);if(!confirm("Remover esta mídia?"))return;try{const r=await api(`${base}/media/${b.dataset.delmedia}`,{method:"DELETE",body:"{}"});toast("Mídia removida.");setAppearanceDirty(false);appearanceTab({root,event:r.event,role,eventId,token,allowAppearance,allowTexts})}catch(e){toast(e.message,true)}})
  }
- if(allowTexts)root.querySelectorAll('[name^="text_"]').forEach(i=>i.oninput=()=>{state.texts[i.name.replace("text_","")]=i.value;refresh()});
- root.querySelector("#saveAppearance").onclick=async()=>{const payload={};if(allowAppearance)payload.appearance_settings=collectAppearance(root,a),payload.background_type=root.querySelector('[name="background_type"]').value;if(allowTexts)payload.public_texts=collectTexts(root,t);try{await api(role==="admin"?`/api/admin/events/${eventId}`:`/api/client/${encodeURIComponent(token)}/event`,{method:"PATCH",body:JSON.stringify(payload)});toast("Personalização salva. ✨");role==="admin"?renderAdminEvent(eventId,"appearance"):clientApp(token,"appearance")}catch(e){toast(e.message,true)}};
+ if(allowTexts)root.querySelectorAll('[name^="text_"]').forEach(i=>i.oninput=()=>{state.texts[i.name.replace("text_","")]=i.value;refresh();setAppearanceDirty(true)});
+ root.querySelector("#saveAppearance").onclick=async()=>{const payload={};if(allowAppearance)payload.appearance_settings=collectAppearance(root,a),payload.background_type=root.querySelector('[name="background_type"]').value;if(allowTexts)payload.public_texts=collectTexts(root,t);try{await api(role==="admin"?`/api/admin/events/${eventId}`:`/api/client/${encodeURIComponent(token)}/event`,{method:"PATCH",body:JSON.stringify(payload)});toast("Personalização salva. ✨");setAppearanceDirty(false);role==="admin"?renderAdminEvent(eventId,"appearance"):clientApp(token,"appearance")}catch(e){toast(e.message,true)}};
+
+ const previewAside=root.querySelector("#appearancePreview");
+ const togglePreview=root.querySelector("#previewToggle");
+ const expandPreview=root.querySelector("#previewExpand");
+
+ togglePreview.onclick=()=>{
+  previewAside.classList.toggle("preview-collapsed");
+  togglePreview.textContent=previewAside.classList.contains("preview-collapsed")?"+":"−";
+ };
+
+ expandPreview.onclick=()=>{
+  previewAside.classList.remove("preview-collapsed");
+  previewAside.classList.toggle("preview-expanded");
+  expandPreview.textContent=previewAside.classList.contains("preview-expanded")?"↘":"⛶";
+ };
+
+ setAppearanceDirty(false);
 }
 function appearanceControls(e,a,media){
  const upload=(kind,title,help,accept)=>`<label class="upload-zone"><input type="file" accept="${accept}" data-upload="${kind}"><span><span class="upload-icon">↑</span><strong>${title}</strong><small>${help}</small></span></label>`;
  const color=(n,l,v)=>`<div class="color-field"><input type="color" name="${n}" value="${esc(v)}"><span style="min-width:0;flex:1"><strong style="display:block;font-size:11px">${l}</strong><input type="text" inputmode="text" autocomplete="off" spellcheck="false" data-color-text="${n}" value="${esc(String(v||"").toUpperCase())}" aria-label="Código HEX de ${esc(l)}" style="min-height:30px;margin-top:4px;padding:5px 8px;border-radius:9px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;text-transform:uppercase"><small class="subtle" data-color-label="${n}" style="display:none">${esc(String(v||"").toUpperCase())}</small></span></div>`;
  const range=(n,l,min,max,step,v,pct=false)=>`<div class="field" style="margin-top:12px"><label>${l}</label><div class="range-row"><input type="range" name="${n}" min="${min}" max="${max}" step="${step}" value="${v}"><output data-output="${n}">${pct?Math.round(Number(v)*100)+"%":v+"px"}</output></div></div>`;
  const font=(v,l,c)=>`<button type="button" class="font-option${c===v?" active":""}" data-font="${v}"><strong>${l}</strong><span class="sample ${v==="modern"?"font-modern":v==="classic"?"font-classic":v==="playful"?"font-soft":"font-elegant"}">Helena</span></button>`;
- return`<section class="card panel" style="margin-bottom:14px"><h3>Fundo</h3><div class="field"><label>Tipo</label><select name="background_type"><option value="none" ${e.background_type==="none"?"selected":""}>Sem mídia</option><option value="image" ${e.background_type==="image"?"selected":""}>Imagem</option><option value="video" ${e.background_type==="video"?"selected":""}>Vídeo em loop</option></select></div><div class="grid two">${upload("background_image","Imagem de fundo","JPG, PNG, WebP ou AVIF • até 10 MB","image/jpeg,image/png,image/webp,image/avif")}${upload("background_video","Vídeo de fundo","MP4 ou WebM • até 20 MB","video/mp4,video/webm")}</div>${media.length?`<div class="section-title"><h3>Mídias enviadas</h3></div><div class="grid two">${media.map(mediaHtml).join("")}</div>`:""}</section>
+ return`<section class="card panel" style="margin-bottom:14px"><h3>Fundo</h3><div class="row"><div class="field"><label>Tipo</label><select name="background_type"><option value="none" ${e.background_type==="none"?"selected":""}>Sem mídia</option><option value="image" ${e.background_type==="image"?"selected":""}>Imagem</option><option value="video" ${e.background_type==="video"?"selected":""}>Vídeo em loop</option></select></div><div class="field"><label>Enquadramento</label><select name="background_position"><option value="top" ${a.background_position==="top"?"selected":""}>Mostrar mais o topo</option><option value="center" ${a.background_position==="center"?"selected":""}>Centralizar</option><option value="bottom" ${a.background_position==="bottom"?"selected":""}>Mostrar mais a parte inferior</option></select></div></div><div class="grid two">${upload("background_image","Imagem de fundo","JPG, PNG, WebP ou AVIF • até 10 MB","image/jpeg,image/png,image/webp,image/avif")}${upload("background_video","Vídeo de fundo","MP4 ou WebM • até 20 MB","video/mp4,video/webm")}</div>${media.length?`<div class="section-title"><h3>Mídias enviadas</h3></div><div class="grid two">${media.map(mediaHtml).join("")}</div>`:""}</section>
  <section class="card panel" style="margin-bottom:14px"><h3>Identidade do evento</h3><div class="grid two">${upload("cover","Capa / detalhe superior","Imagem opcional • até 10 MB","image/jpeg,image/png,image/webp,image/avif")}${upload("logo","Monograma / logo","Imagem opcional • até 10 MB","image/jpeg,image/png,image/webp,image/avif")}</div></section>
- <section class="card panel" style="margin-bottom:14px"><h3>Cores e card</h3><div class="color-grid">${color("background_color","Fundo",a.background_color)}${color("card_color","Card",a.card_color)}${color("text_color","Texto",a.text_color)}${color("muted_color","Texto secundário",a.muted_color)}${color("button_color","Botão",a.button_color)}${color("button_text_color","Texto do botão",a.button_text_color)}${color("overlay_color","Overlay",a.overlay_color)}</div>${range("overlay_opacity","Transparência do overlay",0,.9,.01,a.overlay_opacity,true)}${range("card_opacity","Transparência do card",.45,1,.01,a.card_opacity,true)}${range("card_blur","Desfoque do card",0,30,1,a.card_blur)}${range("card_radius","Arredondamento",8,44,1,a.card_radius)}</section>
+ <section class="card panel" style="margin-bottom:14px"><h3>Cores e card</h3><div class="field"><label>Largura do card no convite</label><select name="card_width"><option value="narrow" ${a.card_width==="narrow"?"selected":""}>Estreito • mostra mais o fundo</option><option value="medium" ${a.card_width==="medium"?"selected":""}>Médio</option><option value="wide" ${a.card_width==="wide"?"selected":""}>Largo • mais espaço para texto</option></select></div><div class="color-grid">${color("background_color","Fundo",a.background_color)}${color("card_color","Card",a.card_color)}${color("text_color","Texto",a.text_color)}${color("muted_color","Texto secundário",a.muted_color)}${color("button_color","Botão",a.button_color)}${color("button_text_color","Texto do botão",a.button_text_color)}${color("overlay_color","Overlay",a.overlay_color)}</div>${range("overlay_opacity","Transparência do overlay",0,.9,.01,a.overlay_opacity,true)}${range("card_opacity","Transparência do card",.45,1,.01,a.card_opacity,true)}${range("card_blur","Desfoque do card",0,30,1,a.card_blur)}${range("card_radius","Arredondamento",8,44,1,a.card_radius)}</section>
  <section class="card panel" style="margin-bottom:14px"><h3>Tipografia</h3><div class="font-preview">${font("elegant","Elegante",a.font_style)}${font("delicate","Delicada",a.font_style)}${font("classic","Clássica",a.font_style)}${font("modern","Moderna",a.font_style)}${font("playful","Infantil suave",a.font_style)}</div><input type="hidden" name="font_style" value="${a.font_style}"><div class="field" style="margin-top:12px"><label>Estilo do card</label><select name="card_style"><option value="glass" ${a.card_style==="glass"?"selected":""}>Translúcido</option><option value="solid" ${a.card_style==="solid"?"selected":""}>Sólido</option><option value="soft" ${a.card_style==="soft"?"selected":""}>Suave</option></select></div></section>`;
 }
 function mediaHtml(m){return`<div class="media-preview">${m.mime_type?.startsWith("video/")?`<video src="${esc(m.public_url)}" autoplay muted loop playsinline></video>`:`<img src="${esc(m.public_url)}" alt="">`}<span class="media-pill">${({background_image:"Fundo",background_video:"Vídeo",cover:"Capa",logo:"Logo"}[m.media_kind]||"Mídia")}</span><div class="media-preview-actions"><button type="button" class="btn danger small" data-delmedia="${m.id}">Remover</button></div></div>`}
-function textControls(t){const input=(k,l)=>`<div class="field"><label>${l}</label><input name="text_${k}" value="${esc(t[k])}"></div>`;return`<section class="card panel" style="margin-bottom:14px"><h3>Textos do RSVP</h3>${input("eyebrow","Título pequeno")}<div class="field"><label>Introdução</label><textarea name="text_intro">${esc(t.intro)}</textarea></div><div class="row">${input("yes_button","Botão positivo")}${input("no_button","Botão negativo")}</div><div class="row">${input("lookup_label","Rótulo da busca")}${input("lookup_placeholder","Texto dentro da busca")}</div>${input("message_label","Rótulo da mensagem")}${input("message_placeholder","Placeholder da mensagem")}<div class="row">${input("success_title","Título após confirmar")}${input("success_message","Mensagem após confirmar")}</div><div class="row">${input("decline_title","Título após recusar")}${input("decline_message","Mensagem após recusar")}</div>${input("closed_title","Título quando encerrar")}</section>`}
-function collectAppearance(root,f){const g=n=>root.querySelector(`[name="${n}"]`)?.value;return{...f,background_color:g("background_color"),card_color:g("card_color"),text_color:g("text_color"),muted_color:g("muted_color"),button_color:g("button_color"),button_text_color:g("button_text_color"),overlay_color:g("overlay_color"),overlay_opacity:Number(g("overlay_opacity")),card_opacity:Number(g("card_opacity")),card_blur:Number(g("card_blur")),card_radius:Number(g("card_radius")),font_style:g("font_style"),card_style:g("card_style")}}
+function textControls(t){const input=(k,l)=>`<div class="field"><label>${l}</label><input name="text_${k}" value="${esc(t[k])}"></div>`;return`<section class="card panel" style="margin-bottom:14px"><h3>Textos do RSVP</h3>${input("eyebrow","Título pequeno")}<div class="field"><label>Introdução</label><textarea name="text_intro">${esc(t.intro)}</textarea></div>${input("name_label","Rótulo do nome")}<div class="row">${input("yes_button","Botão positivo")}${input("no_button","Botão negativo")}</div><div class="row">${input("lookup_label","Rótulo da busca")}${input("lookup_placeholder","Texto dentro da busca")}</div>${input("message_label","Rótulo da mensagem")}${input("message_placeholder","Placeholder da mensagem")}${input("decline_hint","Recado mostrado após clicar em “Não”")}<div class="row">${input("success_title","Título após confirmar")}${input("success_message","Mensagem após confirmar")}</div><div class="row">${input("decline_title","Título após recusar")}${input("decline_message","Mensagem após recusar")}</div>${input("closed_title","Título quando encerrar")}</section>`}
+function collectAppearance(root,f){const g=n=>root.querySelector(`[name="${n}"]`)?.value;return{...f,background_color:g("background_color"),card_color:g("card_color"),text_color:g("text_color"),muted_color:g("muted_color"),button_color:g("button_color"),button_text_color:g("button_text_color"),overlay_color:g("overlay_color"),overlay_opacity:Number(g("overlay_opacity")),card_opacity:Number(g("card_opacity")),card_blur:Number(g("card_blur")),card_radius:Number(g("card_radius")),font_style:g("font_style"),card_style:g("card_style"),background_position:g("background_position"),card_width:g("card_width")}}
 function collectTexts(root,f){const r={...f};Object.keys(DEFAULT_TEXTS).forEach(k=>{const i=root.querySelector(`[name="text_${k}"]`);if(i)r[k]=i.value.trim()||DEFAULT_TEXTS[k]});return r}
 function previewHtml(s){
- const e=s.event,a=s.appearance,t=s.texts,op=a.card_style==="solid"?1:a.card_style==="soft"?Math.max(Number(a.card_opacity),.96):Number(a.card_opacity),media=e.background_type==="video"&&e.background_video_url?`<video src="${esc(e.background_video_url)}" autoplay muted loop playsinline style="width:100%;height:100%;object-fit:cover"></video>`:e.background_type==="image"&&e.background_image_url?`<img src="${esc(e.background_image_url)}" style="width:100%;height:100%;object-fit:cover">`:"";
- return`<div class="preview-phone"><div class="preview-screen" style="background:${a.background_color}">${media}<div class="preview-overlay" style="background:${rgba(a.overlay_color,a.overlay_opacity)}"></div><div class="preview-card" style="background:rgba(${rgb(a.card_color)},${op});border-radius:${a.card_radius}px;backdrop-filter:blur(${a.card_blur}px)"><span class="eyebrow" style="color:${a.button_color}">${esc(t.eyebrow)}</span><h3 style="color:${a.text_color}">${esc(e.title)}</h3><p style="color:${a.muted_color}">${esc(t.intro)}</p><button class="btn block" type="button" style="background:${a.button_color};color:${a.button_text_color};pointer-events:none">${esc(t.yes_button)}</button></div></div></div>`;
+ const e=s.event,a=s.appearance,t=s.texts,op=a.card_style==="solid"?1:a.card_style==="soft"?Math.max(Number(a.card_opacity),.96):Number(a.card_opacity),pos=bgPositionCss(a.background_position),inset=previewInset(a.card_width),media=e.background_type==="video"&&e.background_video_url?`<video src="${esc(e.background_video_url)}" autoplay muted loop playsinline style="width:100%;height:100%;object-fit:cover;object-position:${pos}"></video>`:e.background_type==="image"&&e.background_image_url?`<img src="${esc(e.background_image_url)}" style="width:100%;height:100%;object-fit:cover;object-position:${pos}">`:"";
+ return`<div class="preview-phone"><div class="preview-screen" style="background:${a.background_color}">${media}<div class="preview-overlay" style="background:${rgba(a.overlay_color,a.overlay_opacity)}"></div><div class="preview-card" style="left:${inset}px;right:${inset}px;background:rgba(${rgb(a.card_color)},${op});border-radius:${a.card_radius}px;backdrop-filter:blur(${a.card_blur}px)"><span class="eyebrow" style="color:${a.button_color}">${esc(t.eyebrow)}</span><h3 style="color:${a.text_color}">${esc(e.title)}</h3><p style="color:${a.muted_color}">${esc(t.intro)}</p><button class="btn block" type="button" style="background:${a.button_color};color:${a.button_text_color};pointer-events:none">${esc(t.yes_button)}</button></div></div></div>`;
 }
 
 function adminSettings(root,info){
@@ -435,7 +480,7 @@ function adminSettings(root,info){
  <section class="card panel"><h3>Links</h3><div class="field"><label>Público</label><div class="codebox">${esc(info.public_url)}</div></div><div class="field"><label>Cliente</label><div class="codebox">${esc(info.client_url||"Indisponível")}</div></div><div class="actions"><button class="btn secondary small" id="cp">Copiar público</button><button class="btn secondary small" id="cc">Copiar cliente</button><button class="btn danger small" id="reset">Trocar link cliente</button></div></section></div>
  <section class="card panel" style="margin-top:14px"><h3>Ferramentas Libri</h3><div class="actions"><button class="btn secondary" id="dup">Duplicar evento</button><button class="btn secondary" id="history">Histórico</button><button class="btn secondary" id="trash">Lixeira</button>${!e.archived_at?`<button class="btn secondary" id="status">${e.status==="active"?"Pausar confirmações":"Reativar confirmações"}</button><button class="btn danger" id="archive">Arquivar</button>`:`<button class="btn" id="unarchive">Restaurar evento</button>`}</div></section>`;
  root.querySelector("#editSettings").onclick=()=>eventModal(e);root.querySelector("#cp").onclick=()=>copy(info.public_url);root.querySelector("#cc").onclick=()=>copy(info.client_url);
- root.querySelector("#reset").onclick=async()=>{if(!confirm("O link atual da cliente deixará de funcionar. Continuar?"))return;try{const r=await api(`/api/admin/events/${e.id}/client-link/reset`,{method:"POST",body:"{}"});toast("Novo link criado.");copy(r.client_url);renderAdminEvent(e.id,"settings")}catch(x){toast(x.message,true)}};
+ root.querySelector("#reset").onclick=async()=>{if(!confirm("O link privado atual deixará de funcionar. Continuar?"))return;try{const r=await api(`/api/admin/events/${e.id}/client-link/reset`,{method:"POST",body:"{}"});toast("Novo link criado.");copy(r.client_url);renderAdminEvent(e.id,"settings")}catch(x){toast(x.message,true)}};
  root.querySelector("#dup").onclick=async()=>{if(!confirm("Duplicar configurações e aparência sem convidados?"))return;try{const r=await api(`/api/admin/events/${e.id}/duplicate`,{method:"POST",body:"{}"});toast("Evento duplicado.");renderAdminEvent(r.event.id)}catch(x){toast(x.message,true)}};
  root.querySelector("#history").onclick=()=>historyModal(e.id);root.querySelector("#trash").onclick=()=>trashModal(e.id);
  const st=root.querySelector("#status");if(st)st.onclick=async()=>{try{await api(`/api/admin/events/${e.id}/status`,{method:"POST",body:JSON.stringify({status:e.status==="active"?"inactive":"active"})});renderAdminEvent(e.id,"settings")}catch(x){toast(x.message,true)}};
@@ -450,7 +495,7 @@ async function trashModal(id){try{const d=await api(`/api/admin/events/${id}/tra
 async function clientApp(token,requested="overview"){
  try{const info=await api(`/api/client/${encodeURIComponent(token)}/event`),e=info.event,p=safePerms(e),tabs=[["overview","Visão geral",true],["guests","Convidados",true],["messages","Mensagens",p.view_messages],["appearance","Aparência",p.manage_appearance||p.manage_texts],["settings","Configurações",p.manage_event_details]].filter(x=>x[2]),tab=tabs.some(x=>x[0]===requested)?requested:"overview";brand(e);
  app.innerHTML=`<main class="shell">${topbar()}${eventHeader(e,true)}<div class="tabs-shell"><div class="tabs">${tabs.map(([k,l])=>`<button class="tab${tab===k?" active":""}" data-ctab="${k}">${l}</button>`).join("")}</div></div><div id="clientRoot">${loading()}</div></main>`;
- document.querySelectorAll("[data-ctab]").forEach(b=>b.onclick=()=>clientApp(token,b.dataset.ctab));const root=document.querySelector("#clientRoot");
+ document.querySelectorAll("[data-ctab]").forEach(b=>b.onclick=()=>{if(b.dataset.ctab===tab||canLeaveAppearance())clientApp(token,b.dataset.ctab)});const root=document.querySelector("#clientRoot");
  if(tab==="guests")return guestsTab({root,event:e,role:"client",eventId:e.id,token});
  if(tab==="messages")return messagesTab({root,event:e,role:"client",eventId:e.id,token});
  if(tab==="appearance")return appearanceTab({root,event:e,role:"client",eventId:e.id,token,allowAppearance:p.manage_appearance,allowTexts:p.manage_texts});
@@ -472,10 +517,11 @@ async function publicApp(slug){
   document.documentElement.style.setProperty("--event-overlay",rgba(a.overlay_color,a.overlay_opacity));
   document.documentElement.style.setProperty("--event-blur",`${a.card_blur}px`);
   document.documentElement.style.setProperty("--event-radius",`${a.card_radius}px`);
+  document.documentElement.style.setProperty("--event-button-text",a.button_text_color);
   const cardOpacity=a.card_style==="solid"?1:a.card_style==="soft"?Math.max(Number(a.card_opacity),.96):Number(a.card_opacity);
-  const media=e.background_type==="video"&&e.background_video_url?`<div class="public-media"><video class="public-bg-video" src="${esc(e.background_video_url)}" autoplay muted loop playsinline preload="metadata"></video></div>`:e.background_type==="image"&&e.background_image_url?`<div class="public-media"><img class="public-bg-image" src="${esc(e.background_image_url)}" alt=""></div>`:"";
+  const pos=bgPositionCss(a.background_position),media=e.background_type==="video"&&e.background_video_url?`<div class="public-media"><video class="public-bg-video" src="${esc(e.background_video_url)}" autoplay muted loop playsinline preload="metadata" style="object-position:${pos}"></video></div>`:e.background_type==="image"&&e.background_image_url?`<div class="public-media"><img class="public-bg-image" src="${esc(e.background_image_url)}" alt="" style="object-position:${pos}"></div>`:"";
   app.innerHTML=`<main class="public-page${e.background_type!=="none"?" has-media":""}" style="background:${a.background_color}">${media}${e.background_type!=="none"?`<div class="public-overlay" style="background:${rgba(a.overlay_color,a.overlay_opacity)}"></div><div class="public-vignette"></div>`:""}
-  <section class="public-card" style="background:rgba(${rgb(a.card_color)},${cardOpacity});color:${a.text_color};border-radius:${a.card_radius}px;backdrop-filter:blur(${a.card_style==="solid"?0:a.card_blur}px)">
+  <section class="public-card" style="width:${publicCardWidthCss(a.card_width)};background:rgba(${rgb(a.card_color)},${cardOpacity});color:${a.text_color};border-radius:${a.card_radius}px;backdrop-filter:blur(${a.card_style==="solid"?0:a.card_blur}px)">
   ${a.logo_url?`<img class="public-event-logo" src="${esc(a.logo_url)}" alt="">`:""}${a.cover_url?`<img src="${esc(a.cover_url)}" alt="" style="width:100%;max-height:190px;object-fit:cover;border-radius:18px;margin-bottom:16px">`:""}
   <div class="eyebrow">${esc(t.eyebrow)}</div><h1>${esc(e.title)}</h1><div class="date" style="color:${a.muted_color}">${fmtDate(e.event_date)}${e.event_time?` • ${esc(e.event_time)}`:""}</div><p style="color:${a.muted_color}">${esc(e.welcome_message||t.intro)}</p>${e.rsvp_deadline?`<span class="chip" style="margin-bottom:14px">Confirme até ${fmtDate(e.rsvp_deadline)}</span>`:""}<div id="publicFlow"></div></section></main>`;
   if(!e.accepting_rsvp)return closedPublic(e);
@@ -506,12 +552,12 @@ function listRsvp(e,g){
 
 function freeRsvp(e){
  const root=document.querySelector("#publicFlow"),f=e.extra_fields||{},t=safeTexts(e),limit=Number(e.max_people_per_rsvp||0)||null;
- root.innerHTML=`<form id="frf"><div style="position:absolute;left:-9999px"><input name="website" autocomplete="off"></div><div class="field"><label>Seu nome</label><input id="fp" name="primary_name" required></div><div class="choice"><button type="button" data-r="yes">${esc(t.yes_button)}</button><button type="button" data-r="no">${esc(t.no_button)}</button></div><input type="hidden" name="response_status" value=""><div id="freeSection" style="display:none"><div class="members-editor"><h3>Quem irá?</h3><div id="freeMembers"></div><div class="actions"><button type="button" class="btn secondary small" id="fa">+ Adulto</button><button type="button" class="btn secondary small" id="fc">+ Criança</button></div></div></div>${f.phone?`<div class="field"><label>Telefone</label><input name="phone"></div>`:""}${f.dietary?`<div class="field"><label>Restrição alimentar</label><input name="dietary"></div>`:""}${f.notes?`<div class="field"><label>Observações</label><textarea name="notes"></textarea></div>`:""}${f.love_message!==false?`<div class="field"><label>${esc(t.message_label)}</label><textarea name="love_message" placeholder="${esc(t.message_placeholder)}"></textarea></div>`:""}<button class="btn block large">Enviar confirmação</button></form>`;
- const form=root.querySelector("#frf"),mr=root.querySelector("#freeMembers"),primary=root.querySelector("#fp"),status=form.querySelector('[name="response_status"]');let touched=false;
- const add=type=>{if(limit&&mr.children.length>=limit)return toast(`Limite de ${limit} pessoa(s).`,true);const r=document.createElement("div");r.className="member-editor-row";r.innerHTML=`<div class="member-type-badge">${type==="child"?"🧒 Criança":"👤 Adulto"}</div><input class="fname" data-type="${type}" placeholder="Nome"><button type="button" class="btn danger small rm">×</button>`;r.querySelector(".fname").oninput=()=>{if(mr.firstElementChild===r)touched=true};r.querySelector(".rm").onclick=()=>r.remove();mr.append(r)};add("adult");
+ root.innerHTML=`<form id="frf"><div style="position:absolute;left:-9999px"><input name="website" autocomplete="off"></div><div class="field"><label>${esc(t.name_label)}</label><input id="fp" name="primary_name" required></div><div class="choice"><button type="button" data-r="yes">${esc(t.yes_button)}</button><button type="button" data-r="no">${esc(t.no_button)}</button></div><div id="declineHint" class="decline-hint" style="display:none">${esc(t.decline_hint)}</div><input type="hidden" name="response_status" value=""><div id="freeSection" style="display:none"><div class="members-editor"><h3>Quem irá?</h3><div id="freeMembers"></div><div class="actions"><button type="button" class="btn secondary small" id="fa">+ Adulto</button><button type="button" class="btn secondary small" id="fc">+ Criança</button></div></div></div>${f.phone?`<div class="field"><label>Telefone</label><input name="phone"></div>`:""}${f.dietary?`<div id="attendeeOnlyDietary" class="attendee-only" style="display:none"><div class="field"><label>Restrição alimentar</label><input name="dietary"></div></div>`:""}${f.notes?`<div class="field"><label>Observações</label><textarea name="notes"></textarea></div>`:""}${f.love_message!==false?`<div class="field"><label>${esc(t.message_label)}</label><textarea name="love_message" placeholder="${esc(t.message_placeholder)}"></textarea></div>`:""}<button class="btn block large">Enviar confirmação</button></form>`;
+ const form=root.querySelector("#frf"),mr=root.querySelector("#freeMembers"),primary=root.querySelector("#fp"),status=form.querySelector('[name="response_status"]'),declineHint=root.querySelector("#declineHint"),attendeeDietary=root.querySelector("#attendeeOnlyDietary");let touched=false;
+ const add=(type,isPrimary=false)=>{if(limit&&mr.children.length>=limit)return toast(`Limite de ${limit} pessoa(s).`,true);const r=document.createElement("div");r.className=`member-editor-row${isPrimary?" primary-member-row":""}`;r.innerHTML=`<div class="member-type-badge">${type==="child"?"🧒 Criança":"👤 Adulto"}</div><input class="fname" data-type="${type}" placeholder="Nome">${isPrimary?`<span class="primary-lock" title="Pessoa responsável">Você</span>`:`<button type="button" class="btn danger small rm">×</button>`}`;r.querySelector(".fname").oninput=()=>{if(mr.firstElementChild===r)touched=true};const remove=r.querySelector(".rm");if(remove)remove.onclick=()=>r.remove();mr.append(r)};add("adult",true);
  primary.oninput=()=>{const i=mr.firstElementChild?.querySelector(".fname");if(i&&(!touched||!i.value.trim()))i.value=primary.value};
  root.querySelector("#fa").onclick=()=>add("adult");root.querySelector("#fc").onclick=()=>add("child");
- root.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-r]").forEach(x=>x.classList.remove("active"));b.classList.add("active");status.value=b.dataset.r;root.querySelector("#freeSection").style.display=status.value==="yes"?"":"none"});
- form.onsubmit=async ev=>{ev.preventDefault();const d=new FormData(form);if(!status.value)return toast("Escolha se você poderá comparecer.",true);const members=status.value==="yes"?[...mr.querySelectorAll(".fname")].map(i=>({name:i.value.trim(),person_type:i.dataset.type,attendance_status:"yes"})).filter(x=>x.name):[];if(status.value==="yes"&&!members.length)return toast("Informe pelo menos uma pessoa.",true);const b=ev.submitter;b.disabled=true;try{await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",body:JSON.stringify({website:d.get("website"),primary_name:d.get("primary_name"),response_status:status.value,members,phone:d.get("phone"),dietary:d.get("dietary"),notes:d.get("notes"),love_message:d.get("love_message")})});success(e,status.value)}catch(x){toast(x.message,true);b.disabled=false}};
+ root.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-r]").forEach(x=>x.classList.remove("active"));b.classList.add("active");status.value=b.dataset.r;const yes=status.value==="yes";root.querySelector("#freeSection").style.display=yes?"":"none";if(attendeeDietary)attendeeDietary.style.display=yes?"":"none";declineHint.style.display=yes?"none":""});
+ form.onsubmit=async ev=>{ev.preventDefault();const d=new FormData(form);if(!status.value)return toast("Escolha se você poderá comparecer.",true);const members=status.value==="yes"?[...mr.querySelectorAll(".fname")].map(i=>({name:i.value.trim(),person_type:i.dataset.type,attendance_status:"yes"})).filter(x=>x.name):[];if(status.value==="yes"&&!members.length)return toast("Informe pelo menos uma pessoa.",true);const b=ev.submitter;b.disabled=true;try{await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",body:JSON.stringify({website:d.get("website"),primary_name:d.get("primary_name"),response_status:status.value,members,phone:d.get("phone"),dietary:status.value==="yes"?d.get("dietary"):"",notes:d.get("notes"),love_message:d.get("love_message")})});success(e,status.value)}catch(x){toast(x.message,true);b.disabled=false}};
 }
 function success(e,status){const t=safeTexts(e),yes=status==="yes";document.querySelector("#publicFlow").innerHTML=`<div class="success"><div class="bubble">${yes?"✓":"♡"}</div><h2>${esc(yes?t.success_title:t.decline_title)}</h2><p>${esc(yes?t.success_message:t.decline_message)}</p></div>`}
