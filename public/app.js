@@ -1,8 +1,8 @@
 const app=document.querySelector("#app"),toastEl=document.querySelector("#toast"),path=location.pathname;
 let toastTimer,suggestTimer,appearanceDirty=false;
 
-const DEFAULT_APPEARANCE={background_color:"#f8efec",card_color:"#fffaf7",text_color:"#4f2d2a",muted_color:"#866e68",button_color:"#b8735f",button_text_color:"#ffffff",overlay_color:"#3a1f1b",overlay_opacity:.18,card_opacity:.94,card_blur:12,card_radius:28,font_style:"elegant",card_style:"glass",background_position:"center",card_width:"medium",cover_url:"",logo_url:""};
-const DEFAULT_TEXTS={eyebrow:"Confirmação de presença",intro:"Confirme sua presença para que tudo seja preparado com carinho.",lookup_label:"Digite seu nome",lookup_placeholder:"Comece a digitar seu nome",yes_button:"Sim, estarei presente!",no_button:"Não poderei comparecer",message_label:"Deixe uma mensagem carinhosa 💌",message_placeholder:"Uma mensagem especial para quem está celebrando...",success_title:"Presença confirmada!",success_message:"Que bom ter você com a gente. 💛",decline_title:"Resposta registrada",decline_message:"Obrigada por avisar.",decline_hint:"Tudo bem 💛 Se quiser, você ainda pode deixar uma mensagem carinhosa abaixo.",name_label:"Seu nome",closed_title:"Confirmações encerradas"};
+const DEFAULT_APPEARANCE={background_color:"#f8efec",card_color:"#fffaf7",text_color:"#4f2d2a",muted_color:"#866e68",button_color:"#b8735f",button_text_color:"#ffffff",overlay_color:"#3a1f1b",overlay_opacity:.18,card_opacity:.94,card_blur:12,card_radius:28,font_style:"elegant",card_style:"glass",background_position:"center",card_width:"medium",invitation_url:"",calendar_location:"",location_url:"",calendar_end_time:"",cover_url:"",logo_url:""};
+const DEFAULT_TEXTS={eyebrow:"Confirmação de presença",intro:"Confirme sua presença para que tudo seja preparado com carinho.",lookup_label:"Digite seu nome",lookup_placeholder:"Comece a digitar seu nome",yes_button:"Sim, estarei presente!",no_button:"Não poderei comparecer",message_label:"Deixe uma mensagem carinhosa 💌",message_placeholder:"Uma mensagem especial para quem está celebrando...",success_title:"Presença confirmada!",success_message:"Que bom ter você com a gente. 💛",decline_title:"Resposta registrada",decline_message:"Obrigada por avisar.",decline_hint:"Tudo bem 💛 Se quiser, você ainda pode deixar uma mensagem carinhosa abaixo.",name_label:"Seu nome",calendar_button:"Adicionar à agenda",location_button:"Abrir localização",back_button:"Voltar ao convite",closed_title:"Confirmações encerradas"};
 const DEFAULT_PERMS={manage_guests:true,manage_appearance:true,manage_texts:true,view_messages:true,export_guests:true,manage_event_details:false};
 
 const esc=(v="")=>String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -28,6 +28,141 @@ const normalizeHex=v=>{
 const bgPositionCss=v=>v==="top"?"center top":v==="bottom"?"center bottom":"center center";
 const publicCardWidthCss=v=>v==="narrow"?"min(82vw,430px)":v==="wide"?"min(94vw,590px)":"min(88vw,510px)";
 const previewInset=v=>v==="narrow"?24:v==="wide"?8:16;
+
+const pad2=n=>String(n).padStart(2,"0");
+const compactDate=v=>String(v||"").replaceAll("-","");
+const compactTime=v=>String(v||"00:00").replace(":","")+"00";
+
+function addCalendarHours(date,time,hours=4){
+ if(!date)return{date:"",time:""};
+ const [y,m,d]=date.split("-").map(Number);
+ const [hh,mm]=String(time||"00:00").split(":").map(Number);
+ const dt=new Date(Date.UTC(y,m-1,d,hh,mm,0));
+ dt.setUTCHours(dt.getUTCHours()+hours);
+ return{
+  date:`${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth()+1)}-${pad2(dt.getUTCDate())}`,
+  time:`${pad2(dt.getUTCHours())}:${pad2(dt.getUTCMinutes())}`
+ };
+}
+
+function calendarRange(e,a){
+ const date=e.event_date;
+ if(!date)return null;
+
+ if(!e.event_time){
+  const next=addCalendarHours(date,"00:00",24);
+  return{allDay:true,start:compactDate(date),end:compactDate(next.date)};
+ }
+
+ let endDate=date,endTime=a.calendar_end_time;
+ if(endTime){
+  const [sh,sm]=e.event_time.split(":").map(Number);
+  const [eh,em]=endTime.split(":").map(Number);
+  if(eh*60+em<=sh*60+sm){
+   endDate=addCalendarHours(date,"00:00",24).date;
+  }
+ }else{
+  const end=addCalendarHours(date,e.event_time,4);
+  endDate=end.date;
+  endTime=end.time;
+ }
+
+ return{
+  allDay:false,
+  start:`${compactDate(date)}T${compactTime(e.event_time)}`,
+  end:`${compactDate(endDate)}T${compactTime(endTime)}`
+ };
+}
+
+function calendarDescription(e,a){
+ const bits=["Evento adicionado pelo Libri RSVP."];
+ if(a.invitation_url)bits.push(`Convite: ${a.invitation_url}`);
+ return bits.join("\n");
+}
+
+function googleCalendarUrl(e){
+ const a=safeAppearance(e),range=calendarRange(e,a);
+ if(!range)return"";
+ const q=new URLSearchParams({
+  action:"TEMPLATE",
+  text:e.title||"Evento",
+  dates:`${range.start}/${range.end}`,
+  details:calendarDescription(e,a),
+  location:a.calendar_location||""
+ });
+ if(!range.allDay)q.set("ctz","America/Sao_Paulo");
+ return`https://calendar.google.com/calendar/render?${q.toString()}`;
+}
+
+function icsEscape(v=""){
+ return String(v)
+  .replace(/\\/g,"\\\\")
+  .replace(/\r?\n/g,"\\n")
+  .replace(/,/g,"\\,")
+  .replace(/;/g,"\\;");
+}
+
+function downloadCalendarIcs(e){
+ const a=safeAppearance(e),range=calendarRange(e,a);
+ if(!range)return toast("Este evento ainda não tem data configurada.",true);
+
+ const stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d{3}Z$/,"Z");
+ const start=range.allDay
+  ?`DTSTART;VALUE=DATE:${range.start}`
+  :`DTSTART;TZID=America/Sao_Paulo:${range.start}`;
+ const end=range.allDay
+  ?`DTEND;VALUE=DATE:${range.end}`
+  :`DTEND;TZID=America/Sao_Paulo:${range.end}`;
+
+ const body=[
+  "BEGIN:VCALENDAR",
+  "VERSION:2.0",
+  "PRODID:-//Libri Convites//Libri RSVP//PT-BR",
+  "CALSCALE:GREGORIAN",
+  "METHOD:PUBLISH",
+  "BEGIN:VEVENT",
+  `UID:${icsEscape(e.id||e.slug||crypto.randomUUID())}@confirmacao.libriconvites.com.br`,
+  `DTSTAMP:${stamp}`,
+  start,
+  end,
+  `SUMMARY:${icsEscape(e.title||"Evento")}`,
+  `DESCRIPTION:${icsEscape(calendarDescription(e,a))}`,
+  a.calendar_location?`LOCATION:${icsEscape(a.calendar_location)}`:"",
+  "END:VEVENT",
+  "END:VCALENDAR"
+ ].filter(Boolean).join("\r\n");
+
+ const blob=new Blob([body],{type:"text/calendar;charset=utf-8"});
+ const url=URL.createObjectURL(blob);
+ const link=document.createElement("a");
+ link.href=url;
+ link.download=`${String(e.slug||e.title||"evento").replace(/[^a-z0-9_-]+/gi,"-")}.ics`;
+ document.body.append(link);
+ link.click();
+ link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+
+function locationTarget(a){
+ if(a.location_url)return a.location_url;
+ if(a.calendar_location)return`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.calendar_location)}`;
+ return"";
+}
+
+function openCalendarMenu(e){
+ const google=googleCalendarUrl(e);
+ if(!google)return toast("Este evento ainda não tem data configurada.",true);
+
+ const w=modal(
+  "Adicionar à agenda",
+  `<div class="calendar-options">
+    <a class="btn block" href="${esc(google)}" target="_blank" rel="noopener">Google Agenda</a>
+    <button class="btn secondary block" type="button" id="calendarIcs">Apple / iPhone / outros</button>
+   </div>`,
+  "Escolha onde deseja salvar este evento."
+ );
+ w.querySelector("#calendarIcs").onclick=()=>downloadCalendarIcs(e);
+}
 
 function setAppearanceDirty(value=true){
  appearanceDirty=Boolean(value);
@@ -436,6 +571,7 @@ async function appearanceTab({root,event,role,eventId,token,allowAppearance,allo
   root.querySelectorAll("[data-delmedia]").forEach(b=>b.onclick=async()=>{if(appearanceDirty)return toast("Salve as alterações atuais antes de remover uma mídia.",true);if(!confirm("Remover esta mídia?"))return;try{const r=await api(`${base}/media/${b.dataset.delmedia}`,{method:"DELETE",body:"{}"});toast("Mídia removida.");setAppearanceDirty(false);appearanceTab({root,event:r.event,role,eventId,token,allowAppearance,allowTexts})}catch(e){toast(e.message,true)}})
  }
  if(allowTexts)root.querySelectorAll('[name^="text_"]').forEach(i=>i.oninput=()=>{state.texts[i.name.replace("text_","")]=i.value;refresh();setAppearanceDirty(true)});
+ if(allowAppearance)root.querySelectorAll('[name="invitation_url"],[name="calendar_location"],[name="location_url"],[name="calendar_end_time"]').forEach(i=>i.oninput=()=>setAppearanceDirty(true));
  root.querySelector("#saveAppearance").onclick=async()=>{const payload={};if(allowAppearance)payload.appearance_settings=collectAppearance(root,a),payload.background_type=root.querySelector('[name="background_type"]').value;if(allowTexts)payload.public_texts=collectTexts(root,t);try{await api(role==="admin"?`/api/admin/events/${eventId}`:`/api/client/${encodeURIComponent(token)}/event`,{method:"PATCH",body:JSON.stringify(payload)});toast("Personalização salva. ✨");setAppearanceDirty(false);role==="admin"?renderAdminEvent(eventId,"appearance"):clientApp(token,"appearance")}catch(e){toast(e.message,true)}};
 
  const previewAside=root.querySelector("#appearancePreview");
@@ -462,12 +598,13 @@ function appearanceControls(e,a,media){
  const font=(v,l,c)=>`<button type="button" class="font-option${c===v?" active":""}" data-font="${v}"><strong>${l}</strong><span class="sample ${v==="modern"?"font-modern":v==="classic"?"font-classic":v==="playful"?"font-soft":"font-elegant"}">Helena</span></button>`;
  return`<section class="card panel" style="margin-bottom:14px"><h3>Fundo</h3><div class="row"><div class="field"><label>Tipo</label><select name="background_type"><option value="none" ${e.background_type==="none"?"selected":""}>Sem mídia</option><option value="image" ${e.background_type==="image"?"selected":""}>Imagem</option><option value="video" ${e.background_type==="video"?"selected":""}>Vídeo em loop</option></select></div><div class="field"><label>Enquadramento</label><select name="background_position"><option value="top" ${a.background_position==="top"?"selected":""}>Mostrar mais o topo</option><option value="center" ${a.background_position==="center"?"selected":""}>Centralizar</option><option value="bottom" ${a.background_position==="bottom"?"selected":""}>Mostrar mais a parte inferior</option></select></div></div><div class="grid two">${upload("background_image","Imagem de fundo","JPG, PNG, WebP ou AVIF • até 10 MB","image/jpeg,image/png,image/webp,image/avif")}${upload("background_video","Vídeo de fundo","MP4 ou WebM • até 20 MB","video/mp4,video/webm")}</div>${media.length?`<div class="section-title"><h3>Mídias enviadas</h3></div><div class="grid two">${media.map(mediaHtml).join("")}</div>`:""}</section>
  <section class="card panel" style="margin-bottom:14px"><h3>Identidade do evento</h3><div class="grid two">${upload("cover","Capa / detalhe superior","Imagem opcional • até 10 MB","image/jpeg,image/png,image/webp,image/avif")}${upload("logo","Monograma / logo","Imagem opcional • até 10 MB","image/jpeg,image/png,image/webp,image/avif")}</div></section>
+ <section class="card panel" style="margin-bottom:14px"><h3>Links e agenda</h3><p class="subtle" style="margin-bottom:12px">Esses dados aparecem depois da resposta do convidado. Se um campo ficar vazio, o botão correspondente não aparece.</p><div class="field"><label>URL do convite</label><input type="url" name="invitation_url" value="${esc(a.invitation_url||"")}" placeholder="https://libriconvites.com.br/..."><small>Usado no botão “Voltar ao convite”.</small></div><div class="field"><label>Local / endereço do evento</label><input name="calendar_location" value="${esc(a.calendar_location||"")}" placeholder="Ex.: Espaço Encanto, Rua..."><small>Entra no calendário e no resumo após a confirmação.</small></div><div class="row"><div class="field"><label>Link da localização (opcional)</label><input type="url" name="location_url" value="${esc(a.location_url||"")}" placeholder="https://maps.google.com/..."><small>Se ficar vazio, usamos uma busca pelo endereço acima.</small></div><div class="field"><label>Horário de término (opcional)</label><input type="time" name="calendar_end_time" value="${esc(a.calendar_end_time||"")}"><small>Se ficar vazio, a agenda considera 4 horas de evento.</small></div></div></section>
  <section class="card panel" style="margin-bottom:14px"><h3>Cores e card</h3><div class="field"><label>Largura do card no convite</label><select name="card_width"><option value="narrow" ${a.card_width==="narrow"?"selected":""}>Estreito • mostra mais o fundo</option><option value="medium" ${a.card_width==="medium"?"selected":""}>Médio</option><option value="wide" ${a.card_width==="wide"?"selected":""}>Largo • mais espaço para texto</option></select></div><div class="color-grid">${color("background_color","Fundo",a.background_color)}${color("card_color","Card",a.card_color)}${color("text_color","Texto",a.text_color)}${color("muted_color","Texto secundário",a.muted_color)}${color("button_color","Botão",a.button_color)}${color("button_text_color","Texto do botão",a.button_text_color)}${color("overlay_color","Overlay",a.overlay_color)}</div>${range("overlay_opacity","Transparência do overlay",0,.9,.01,a.overlay_opacity,true)}${range("card_opacity","Transparência do card",.45,1,.01,a.card_opacity,true)}${range("card_blur","Desfoque do card",0,30,1,a.card_blur)}${range("card_radius","Arredondamento",8,44,1,a.card_radius)}</section>
  <section class="card panel" style="margin-bottom:14px"><h3>Tipografia</h3><div class="font-preview">${font("elegant","Elegante",a.font_style)}${font("delicate","Delicada",a.font_style)}${font("classic","Clássica",a.font_style)}${font("modern","Moderna",a.font_style)}${font("playful","Infantil suave",a.font_style)}</div><input type="hidden" name="font_style" value="${a.font_style}"><div class="field" style="margin-top:12px"><label>Estilo do card</label><select name="card_style"><option value="glass" ${a.card_style==="glass"?"selected":""}>Translúcido</option><option value="solid" ${a.card_style==="solid"?"selected":""}>Sólido</option><option value="soft" ${a.card_style==="soft"?"selected":""}>Suave</option></select></div></section>`;
 }
 function mediaHtml(m){return`<div class="media-preview">${m.mime_type?.startsWith("video/")?`<video src="${esc(m.public_url)}" autoplay muted loop playsinline></video>`:`<img src="${esc(m.public_url)}" alt="">`}<span class="media-pill">${({background_image:"Fundo",background_video:"Vídeo",cover:"Capa",logo:"Logo"}[m.media_kind]||"Mídia")}</span><div class="media-preview-actions"><button type="button" class="btn danger small" data-delmedia="${m.id}">Remover</button></div></div>`}
-function textControls(t){const input=(k,l)=>`<div class="field"><label>${l}</label><input name="text_${k}" value="${esc(t[k])}"></div>`;return`<section class="card panel" style="margin-bottom:14px"><h3>Textos do RSVP</h3>${input("eyebrow","Título pequeno")}<div class="field"><label>Introdução</label><textarea name="text_intro">${esc(t.intro)}</textarea></div>${input("name_label","Rótulo do nome")}<div class="row">${input("yes_button","Botão positivo")}${input("no_button","Botão negativo")}</div><div class="row">${input("lookup_label","Rótulo da busca")}${input("lookup_placeholder","Texto dentro da busca")}</div>${input("message_label","Rótulo da mensagem")}${input("message_placeholder","Placeholder da mensagem")}${input("decline_hint","Recado mostrado após clicar em “Não”")}<div class="row">${input("success_title","Título após confirmar")}${input("success_message","Mensagem após confirmar")}</div><div class="row">${input("decline_title","Título após recusar")}${input("decline_message","Mensagem após recusar")}</div>${input("closed_title","Título quando encerrar")}</section>`}
-function collectAppearance(root,f){const g=n=>root.querySelector(`[name="${n}"]`)?.value;return{...f,background_color:g("background_color"),card_color:g("card_color"),text_color:g("text_color"),muted_color:g("muted_color"),button_color:g("button_color"),button_text_color:g("button_text_color"),overlay_color:g("overlay_color"),overlay_opacity:Number(g("overlay_opacity")),card_opacity:Number(g("card_opacity")),card_blur:Number(g("card_blur")),card_radius:Number(g("card_radius")),font_style:g("font_style"),card_style:g("card_style"),background_position:g("background_position"),card_width:g("card_width")}}
+function textControls(t){const input=(k,l)=>`<div class="field"><label>${l}</label><input name="text_${k}" value="${esc(t[k])}"></div>`;return`<section class="card panel" style="margin-bottom:14px"><h3>Textos do RSVP</h3>${input("eyebrow","Título pequeno")}<div class="field"><label>Introdução</label><textarea name="text_intro">${esc(t.intro)}</textarea></div>${input("name_label","Rótulo do nome")}<div class="row">${input("yes_button","Botão positivo")}${input("no_button","Botão negativo")}</div><div class="row">${input("lookup_label","Rótulo da busca")}${input("lookup_placeholder","Texto dentro da busca")}</div>${input("message_label","Rótulo da mensagem")}${input("message_placeholder","Placeholder da mensagem")}${input("decline_hint","Recado mostrado após clicar em “Não”")}<div class="row">${input("success_title","Título após confirmar")}${input("success_message","Mensagem após confirmar")}</div><div class="row">${input("decline_title","Título após recusar")}${input("decline_message","Mensagem após recusar")}</div>${input("calendar_button","Botão de agenda")}${input("back_button","Botão para voltar ao convite")}${input("closed_title","Título quando encerrar")}</section>`}
+function collectAppearance(root,f){const g=n=>root.querySelector(`[name="${n}"]`)?.value;return{...f,background_color:g("background_color"),card_color:g("card_color"),text_color:g("text_color"),muted_color:g("muted_color"),button_color:g("button_color"),button_text_color:g("button_text_color"),overlay_color:g("overlay_color"),overlay_opacity:Number(g("overlay_opacity")),card_opacity:Number(g("card_opacity")),card_blur:Number(g("card_blur")),card_radius:Number(g("card_radius")),font_style:g("font_style"),card_style:g("card_style"),background_position:g("background_position"),card_width:g("card_width"),invitation_url:g("invitation_url")||"",calendar_location:g("calendar_location")||"",location_url:g("location_url")||"",calendar_end_time:g("calendar_end_time")||""}}
 function collectTexts(root,f){const r={...f};Object.keys(DEFAULT_TEXTS).forEach(k=>{const i=root.querySelector(`[name="text_${k}"]`);if(i)r[k]=i.value.trim()||DEFAULT_TEXTS[k]});return r}
 function previewHtml(s){
  const e=s.event,a=s.appearance,t=s.texts,op=a.card_style==="solid"?1:a.card_style==="soft"?Math.max(Number(a.card_opacity),.96):Number(a.card_opacity),pos=bgPositionCss(a.background_position),inset=previewInset(a.card_width),media=e.background_type==="video"&&e.background_video_url?`<video src="${esc(e.background_video_url)}" autoplay muted loop playsinline style="width:100%;height:100%;object-fit:cover;object-position:${pos}"></video>`:e.background_type==="image"&&e.background_image_url?`<img src="${esc(e.background_image_url)}" style="width:100%;height:100%;object-fit:cover;object-position:${pos}">`:"";
@@ -560,4 +697,23 @@ function freeRsvp(e){
  root.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-r]").forEach(x=>x.classList.remove("active"));b.classList.add("active");status.value=b.dataset.r;const yes=status.value==="yes";root.querySelector("#freeSection").style.display=yes?"":"none";if(attendeeDietary)attendeeDietary.style.display=yes?"":"none";declineHint.style.display=yes?"none":""});
  form.onsubmit=async ev=>{ev.preventDefault();const d=new FormData(form);if(!status.value)return toast("Escolha se você poderá comparecer.",true);const members=status.value==="yes"?[...mr.querySelectorAll(".fname")].map(i=>({name:i.value.trim(),person_type:i.dataset.type,attendance_status:"yes"})).filter(x=>x.name):[];if(status.value==="yes"&&!members.length)return toast("Informe pelo menos uma pessoa.",true);const b=ev.submitter;b.disabled=true;try{await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",body:JSON.stringify({website:d.get("website"),primary_name:d.get("primary_name"),response_status:status.value,members,phone:d.get("phone"),dietary:status.value==="yes"?d.get("dietary"):"",notes:d.get("notes"),love_message:d.get("love_message")})});success(e,status.value)}catch(x){toast(x.message,true);b.disabled=false}};
 }
-function success(e,status){const t=safeTexts(e),yes=status==="yes";document.querySelector("#publicFlow").innerHTML=`<div class="success"><div class="bubble">${yes?"✓":"♡"}</div><h2>${esc(yes?t.success_title:t.decline_title)}</h2><p>${esc(yes?t.success_message:t.decline_message)}</p></div>`}
+function success(e,status){
+ const t=safeTexts(e),a=safeAppearance(e),yes=status==="yes";
+ const details=yes&&e.event_date
+  ?`<div class="success-event-summary">
+      <strong>${esc(fmtDate(e.event_date))}${e.event_time?` • ${esc(e.event_time)}`:""}</strong>
+      ${a.calendar_location?`<span>${esc(a.calendar_location)}</span>`:""}
+    </div>`
+  :"";
+ const calendar=yes&&e.event_date
+  ?`<button class="btn block" type="button" id="successCalendar">📅 ${esc(t.calendar_button)}</button>`
+  :"";
+ const back=a.invitation_url
+  ?`<a class="btn ghost block" href="${esc(a.invitation_url)}">← ${esc(t.back_button)}</a>`
+  :"";
+
+ document.querySelector("#publicFlow").innerHTML=`<div class="success"><div class="bubble">${yes?"✓":"♡"}</div><h2>${esc(yes?t.success_title:t.decline_title)}</h2><p>${esc(yes?t.success_message:t.decline_message)}</p>${details}<div class="success-actions">${calendar}${back}</div></div>`;
+
+ const calendarBtn=document.querySelector("#successCalendar");
+ if(calendarBtn)calendarBtn.onclick=()=>openCalendarMenu(e);
+}
