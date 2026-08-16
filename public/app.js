@@ -18,6 +18,12 @@ const effectiveLimit=(e,g)=>Number(g?.max_people_allowed||0)||Number(e?.max_peop
 const clone=v=>JSON.parse(JSON.stringify(v));
 const rgb=(h,f="255,253,251")=>{h=String(h||"").replace("#","");if(!/^[0-9a-f]{6}$/i.test(h))return f;return`${parseInt(h.slice(0,2),16)},${parseInt(h.slice(2,4),16)},${parseInt(h.slice(4,6),16)}`};
 const rgba=(h,a)=>{const r=rgb(h,"58,31,27");return`rgba(${r},${Number(a||0)})`};
+const normalizeHex=v=>{
+ let h=String(v||"").trim().replace(/^#/,"");
+ if(/^[0-9a-f]{3}$/i.test(h))h=h.split("").map(c=>c+c).join("");
+ if(!/^[0-9a-f]{6}$/i.test(h))return null;
+ return`#${h.toUpperCase()}`;
+};
 
 async function api(url,options={}){
  const headers={...(options.headers||{})};
@@ -343,7 +349,60 @@ async function appearanceTab({root,event,role,eventId,token,allowAppearance,allo
  root.innerHTML=`<div class="appearance-layout"><div class="appearance-controls">${allowAppearance?appearanceControls(event,a,media):""}${allowTexts?textControls(t):""}<button class="btn block large" id="saveAppearance">Salvar personalização</button></div><aside class="appearance-preview"><div class="section-title" style="margin-top:0"><div><h3>Como o convidado verá</h3><span class="subtle">Prévia no celular.</span></div></div><div class="preview-wrap"><div id="preview"></div></div></aside></div>`;
  const state={event:clone(event),appearance:{...a},texts:{...t}},refresh=()=>root.querySelector("#preview").innerHTML=previewHtml(state);refresh();
  if(allowAppearance){
-  root.querySelectorAll('input[type="color"],input[type="range"],select[name="background_type"],select[name="card_style"]').forEach(i=>i.oninput=()=>{if(i.name==="background_type")state.event.background_type=i.value;else state.appearance[i.name]=i.type==="range"?Number(i.value):i.value;const o=root.querySelector(`[data-output="${i.name}"]`);if(o)o.textContent=["overlay_opacity","card_opacity"].includes(i.name)?`${Math.round(Number(i.value)*100)}%`:`${i.value}px`;refresh()});
+  root.querySelectorAll('input[type="color"],input[type="range"],select[name="background_type"],select[name="card_style"]').forEach(i=>i.oninput=()=>{
+   if(i.name==="background_type")state.event.background_type=i.value;
+   else state.appearance[i.name]=i.type==="range"?Number(i.value):i.value;
+
+   if(i.type==="color"){
+    const hexField=root.querySelector(`[data-color-text="${i.name}"]`);
+    const hexLabel=root.querySelector(`[data-color-label="${i.name}"]`);
+    if(hexField)hexField.value=i.value.toUpperCase();
+    if(hexLabel)hexLabel.textContent=i.value.toUpperCase();
+   }
+
+   const o=root.querySelector(`[data-output="${i.name}"]`);
+   if(o)o.textContent=["overlay_opacity","card_opacity"].includes(i.name)?`${Math.round(Number(i.value)*100)}%`:`${i.value}px`;
+   refresh();
+  });
+
+  root.querySelectorAll("[data-color-text]").forEach(i=>{
+   const sync=()=>{
+    const hex=normalizeHex(i.value);
+    const colorName=i.dataset.colorText;
+    const picker=root.querySelector(`input[type="color"][name="${colorName}"]`);
+    const label=root.querySelector(`[data-color-label="${colorName}"]`);
+
+    if(!hex||!picker)return false;
+
+    i.value=hex;
+    picker.value=hex;
+    state.appearance[colorName]=hex;
+    if(label)label.textContent=hex;
+    refresh();
+    return true;
+   };
+
+   i.oninput=()=>{
+    const hex=normalizeHex(i.value);
+    if(!hex)return;
+
+    const colorName=i.dataset.colorText;
+    const picker=root.querySelector(`input[type="color"][name="${colorName}"]`);
+    const label=root.querySelector(`[data-color-label="${colorName}"]`);
+
+    if(picker)picker.value=hex;
+    state.appearance[colorName]=hex;
+    if(label)label.textContent=hex;
+    refresh();
+   };
+
+   i.onblur=()=>{
+    if(!sync()){
+     const picker=root.querySelector(`input[type="color"][name="${i.dataset.colorText}"]`);
+     if(picker)i.value=picker.value.toUpperCase();
+    }
+   };
+  });
   root.querySelectorAll("[data-font]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-font]").forEach(x=>x.classList.remove("active"));b.classList.add("active");root.querySelector('[name="font_style"]').value=b.dataset.font;state.appearance.font_style=b.dataset.font;refresh()});
   root.querySelectorAll("[data-upload]").forEach(i=>i.onchange=async()=>{const file=i.files?.[0];if(!file)return;const fd=new FormData();fd.append("file",file);fd.append("kind",i.dataset.upload);try{const r=await api(`${base}/media`,{method:"POST",body:fd});toast("Mídia enviada.");appearanceTab({root,event:r.event,role,eventId,token,allowAppearance,allowTexts})}catch(e){toast(e.message,true)}});
   root.querySelectorAll("[data-delmedia]").forEach(b=>b.onclick=async()=>{if(!confirm("Remover esta mídia?"))return;try{const r=await api(`${base}/media/${b.dataset.delmedia}`,{method:"DELETE",body:"{}"});toast("Mídia removida.");appearanceTab({root,event:r.event,role,eventId,token,allowAppearance,allowTexts})}catch(e){toast(e.message,true)}})
@@ -353,7 +412,7 @@ async function appearanceTab({root,event,role,eventId,token,allowAppearance,allo
 }
 function appearanceControls(e,a,media){
  const upload=(kind,title,help,accept)=>`<label class="upload-zone"><input type="file" accept="${accept}" data-upload="${kind}"><span><span class="upload-icon">↑</span><strong>${title}</strong><small>${help}</small></span></label>`;
- const color=(n,l,v)=>`<label class="color-field"><input type="color" name="${n}" value="${esc(v)}"><span><strong style="display:block;font-size:11px">${l}</strong><small class="subtle">${esc(v)}</small></span></label>`;
+ const color=(n,l,v)=>`<div class="color-field"><input type="color" name="${n}" value="${esc(v)}"><span style="min-width:0;flex:1"><strong style="display:block;font-size:11px">${l}</strong><input type="text" inputmode="text" autocomplete="off" spellcheck="false" data-color-text="${n}" value="${esc(String(v||"").toUpperCase())}" aria-label="Código HEX de ${esc(l)}" style="min-height:30px;margin-top:4px;padding:5px 8px;border-radius:9px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;text-transform:uppercase"><small class="subtle" data-color-label="${n}" style="display:none">${esc(String(v||"").toUpperCase())}</small></span></div>`;
  const range=(n,l,min,max,step,v,pct=false)=>`<div class="field" style="margin-top:12px"><label>${l}</label><div class="range-row"><input type="range" name="${n}" min="${min}" max="${max}" step="${step}" value="${v}"><output data-output="${n}">${pct?Math.round(Number(v)*100)+"%":v+"px"}</output></div></div>`;
  const font=(v,l,c)=>`<button type="button" class="font-option${c===v?" active":""}" data-font="${v}"><strong>${l}</strong><span class="sample ${v==="modern"?"font-modern":v==="classic"?"font-classic":v==="playful"?"font-soft":"font-elegant"}">Helena</span></button>`;
  return`<section class="card panel" style="margin-bottom:14px"><h3>Fundo</h3><div class="field"><label>Tipo</label><select name="background_type"><option value="none" ${e.background_type==="none"?"selected":""}>Sem mídia</option><option value="image" ${e.background_type==="image"?"selected":""}>Imagem</option><option value="video" ${e.background_type==="video"?"selected":""}>Vídeo em loop</option></select></div><div class="grid two">${upload("background_image","Imagem de fundo","JPG, PNG, WebP ou AVIF • até 10 MB","image/jpeg,image/png,image/webp,image/avif")}${upload("background_video","Vídeo de fundo","MP4 ou WebM • até 20 MB","video/mp4,video/webm")}</div>${media.length?`<div class="section-title"><h3>Mídias enviadas</h3></div><div class="grid two">${media.map(mediaHtml).join("")}</div>`:""}</section>
