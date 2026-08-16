@@ -43,6 +43,8 @@ const DEFAULT_APPEARANCE = {
   card_radius: 28,
   font_style: "elegant",
   card_style: "glass",
+  background_position: "center",
+  card_width: "medium",
   cover_url: "",
   logo_url: "",
 };
@@ -60,6 +62,8 @@ const DEFAULT_PUBLIC_TEXTS = {
   success_message: "Que bom ter você com a gente. 💛",
   decline_title: "Resposta registrada",
   decline_message: "Obrigada por avisar.",
+  decline_hint: "Tudo bem 💛 Se quiser, você ainda pode deixar uma mensagem carinhosa abaixo.",
+  name_label: "Seu nome",
   closed_title: "Confirmações encerradas",
 };
 
@@ -3193,6 +3197,12 @@ function normalizeAppearance(value) {
     card_style: ["solid", "glass", "soft"].includes(source.card_style)
       ? source.card_style
       : DEFAULT_APPEARANCE.card_style,
+    background_position: ["top", "center", "bottom"].includes(source.background_position)
+      ? source.background_position
+      : DEFAULT_APPEARANCE.background_position,
+    card_width: ["narrow", "medium", "wide"].includes(source.card_width)
+      ? source.card_width
+      : DEFAULT_APPEARANCE.card_width,
     cover_url: safeOptionalStoredUrl(source.cover_url),
     logo_url: safeOptionalStoredUrl(source.logo_url),
   };
