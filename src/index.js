@@ -45,6 +45,10 @@ const DEFAULT_APPEARANCE = {
   card_style: "glass",
   background_position: "center",
   card_width: "medium",
+  invitation_url: "",
+  calendar_location: "",
+  location_url: "",
+  calendar_end_time: "",
   cover_url: "",
   logo_url: "",
 };
@@ -64,6 +68,9 @@ const DEFAULT_PUBLIC_TEXTS = {
   decline_message: "Obrigada por avisar.",
   decline_hint: "Tudo bem 💛 Se quiser, você ainda pode deixar uma mensagem carinhosa abaixo.",
   name_label: "Seu nome",
+  calendar_button: "Adicionar à agenda",
+  location_button: "Abrir localização",
+  back_button: "Voltar ao convite",
   closed_title: "Confirmações encerradas",
 };
 
@@ -3203,6 +3210,12 @@ function normalizeAppearance(value) {
     card_width: ["narrow", "medium", "wide"].includes(source.card_width)
       ? source.card_width
       : DEFAULT_APPEARANCE.card_width,
+    invitation_url: safeOptionalStoredUrl(source.invitation_url),
+    calendar_location: cleanOptionalText(source.calendar_location, 300) || "",
+    location_url: safeOptionalStoredUrl(source.location_url),
+    calendar_end_time: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(source.calendar_end_time || ""))
+      ? String(source.calendar_end_time)
+      : "",
     cover_url: safeOptionalStoredUrl(source.cover_url),
     logo_url: safeOptionalStoredUrl(source.logo_url),
   };
