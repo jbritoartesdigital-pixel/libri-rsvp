@@ -2632,6 +2632,49 @@ input[type="range"] {
   cursor: default;
 }
 
+
+/* =========================================================
+   40.2. SUCCESS ACTIONS / CALENDAR
+   ========================================================= */
+
+.success-event-summary {
+  margin: 18px 0 14px;
+  padding: 13px 14px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--event-primary), transparent 78%);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--event-primary), white 94%);
+  text-align: left;
+}
+
+.success-event-summary strong {
+  color: var(--event-text);
+  font-size: 12px;
+}
+
+.success-event-summary span {
+  color: var(--event-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.success-actions {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.success-actions .btn {
+  width: 100%;
+}
+
+.calendar-options {
+  margin-top: 14px;
+  display: grid;
+  gap: 9px;
+}
+
 /* =========================================================
    41. RESPONSIVE
    ========================================================= */
