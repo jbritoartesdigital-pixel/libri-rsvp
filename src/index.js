@@ -44,6 +44,7 @@ const DEFAULT_APPEARANCE = {
   font_style: "elegant",
   card_style: "glass",
   background_position: "center",
+  background_x: "center",
   card_width: "medium",
   invitation_url: "",
   calendar_location: "",
@@ -547,7 +548,12 @@ async function handleApi(request, env, url) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
-    return json({ guests: await listGuests(env, eventId, url) });
+    const [guests, counts] = await Promise.all([
+      listGuests(env, eventId, url),
+      guestStatusCounts(env, eventId),
+    ]);
+
+    return json({ guests, counts });
   }
 
   if (match && method === "POST") {
@@ -808,7 +814,12 @@ async function handleApi(request, env, url) {
       return json({ error: "Acesso inválido." }, 404);
     }
 
-    return json({ guests: await listGuests(env, event.id, url) });
+    const [guests, counts] = await Promise.all([
+      listGuests(env, event.id, url),
+      guestStatusCounts(env, event.id),
+    ]);
+
+    return json({ guests, counts });
   }
 
   if (match && method === "POST") {
@@ -1907,16 +1918,39 @@ async function listGuests(env, eventId, url) {
 
   sql += `
     ORDER BY
-      CASE g.response_status
-        WHEN 'yes' THEN 0
-        WHEN 'pending' THEN 1
-        ELSE 2
+      CASE
+        WHEN g.responded_at IS NULL THEN 1
+        ELSE 0
       END,
+      g.responded_at DESC,
+      g.updated_at DESC,
       COALESCE(NULLIF(g.group_label, ''), g.primary_name) COLLATE NOCASE ASC
   `;
 
   const result = await env.DB.prepare(sql).bind(...bindings).all();
   return hydrateGuests(env, result.results);
+}
+
+
+async function guestStatusCounts(env, eventId) {
+  const row = await env.DB.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN response_status = 'yes' THEN 1 ELSE 0 END) AS yes_count,
+      SUM(CASE WHEN response_status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
+      SUM(CASE WHEN response_status = 'no' THEN 1 ELSE 0 END) AS no_count
+    FROM guests
+    WHERE event_id = ? AND deleted_at IS NULL
+  `)
+    .bind(eventId)
+    .first();
+
+  return {
+    total: Number(row?.total || 0),
+    yes: Number(row?.yes_count || 0),
+    pending: Number(row?.pending_count || 0),
+    no: Number(row?.no_count || 0),
+  };
 }
 
 async function listGuestsRaw(env, eventId) {
@@ -3207,6 +3241,9 @@ function normalizeAppearance(value) {
     background_position: ["top", "center", "bottom"].includes(source.background_position)
       ? source.background_position
       : DEFAULT_APPEARANCE.background_position,
+    background_x: ["left", "center", "right"].includes(source.background_x)
+      ? source.background_x
+      : DEFAULT_APPEARANCE.background_x,
     card_width: ["narrow", "medium", "wide"].includes(source.card_width)
       ? source.card_width
       : DEFAULT_APPEARANCE.card_width,
