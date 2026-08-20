@@ -46,9 +46,9 @@ const DEFAULT_APPEARANCE = {
   background_position: "center",
   background_x: "center",
   card_width: "medium",
+  interface_language: "pt-BR",
   invitation_url: "",
   calendar_location: "",
-  location_url: "",
   calendar_end_time: "",
   cover_url: "",
   logo_url: "",
@@ -70,9 +70,28 @@ const DEFAULT_PUBLIC_TEXTS = {
   decline_hint: "Tudo bem 💛 Se quiser, você ainda pode deixar uma mensagem carinhosa abaixo.",
   name_label: "Seu nome",
   calendar_button: "Adicionar à agenda",
-  location_button: "Abrir localização",
   back_button: "Voltar ao convite",
   closed_title: "Confirmações encerradas",
+};
+
+const DEFAULT_PUBLIC_TEXTS_EN = {
+  eyebrow: "RSVP",
+  intro: "Please confirm your attendance so everything can be prepared with care.",
+  lookup_label: "Enter your name",
+  lookup_placeholder: "Start typing your name",
+  yes_button: "Yes, I'll be there!",
+  no_button: "I won't be able to attend",
+  message_label: "Leave a sweet message 💌",
+  message_placeholder: "A special message for the celebration...",
+  success_title: "Attendance confirmed!",
+  success_message: "We're so happy you'll be there. 💛",
+  decline_title: "Response received",
+  decline_message: "Thank you for letting us know.",
+  decline_hint: "That's okay 💛 If you'd like, you can still leave a message below.",
+  name_label: "Your name",
+  calendar_button: "Add to calendar",
+  back_button: "Back to invitation",
+  closed_title: "RSVP closed",
 };
 
 const DEFAULT_CLIENT_PERMISSIONS = {
@@ -667,9 +686,11 @@ async function handleApi(request, env, url) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+    const language = normalizeAppearance(safeJson(event.appearance_settings, {})).interface_language;
     return csvResponse(
       await listGuestsRaw(env, eventId),
-      `convidados-${event.slug}.csv`
+      `${language === "en" ? "guests" : "convidados"}-${event.slug}.csv`,
+      language
     );
   }
 
@@ -945,9 +966,11 @@ async function handleApi(request, env, url) {
 
     requireClientPermission(event, "export_guests");
 
+    const language = normalizeAppearance(safeJson(event.appearance_settings, {})).interface_language;
     return csvResponse(
       await listGuestsRaw(env, event.id),
-      `convidados-${event.slug}.csv`
+      `${language === "en" ? "guests" : "convidados"}-${event.slug}.csv`,
+      language
     );
   }
 
@@ -1137,7 +1160,7 @@ async function createEvent(env, body) {
 
   const extraFields = normalizeExtraFields(body.extra_fields || {});
   const appearance = normalizeAppearance(body.appearance_settings || {});
-  const publicTexts = normalizePublicTexts(body.public_texts || {});
+  const publicTexts = normalizePublicTexts(body.public_texts || {}, appearance.interface_language);
   const clientPermissions = normalizeClientPermissions(body.client_permissions || {});
   const backgroundType = normalizeBackgroundType(body.background_type);
   const backgroundImageUrl = normalizeOptionalUrl(body.background_image_url);
@@ -1220,8 +1243,8 @@ async function updateEvent(env, current, body, actorRole = "admin") {
     : normalizeAppearance(safeJson(current.appearance_settings, {}));
 
   const publicTexts = body.public_texts !== undefined
-    ? normalizePublicTexts(body.public_texts)
-    : normalizePublicTexts(safeJson(current.public_texts, {}));
+    ? normalizePublicTexts(body.public_texts, appearance.interface_language)
+    : normalizePublicTexts(safeJson(current.public_texts, {}), appearance.interface_language);
 
   const clientPermissions = body.client_permissions !== undefined
     ? normalizeClientPermissions(body.client_permissions)
@@ -2996,40 +3019,29 @@ async function sign(value, secret) {
 // CSV
 // =========================================================
 
-function csvResponse(guests, filename) {
+function csvResponse(guests, filename, language = "pt-BR") {
+  const en = language === "en";
   const rows = [
-    [
-      "Responsável",
-      "Família / grupo",
-      "Status",
-      "Pessoas confirmadas",
-      "Adultos",
-      "Crianças",
-      "Limite",
-      "Telefone",
-      "Restrição alimentar",
-      "Observações",
-      "Mensagem carinhosa",
-      "Origem",
-      "Respondido em",
-    ],
+    en
+      ? ["Primary contact","Family / group","Status","Confirmed people","Adults","Children","Limit","Phone","Dietary restrictions","Notes","Sweet message","Source","Responded at"]
+      : ["Responsável","Família / grupo","Status","Pessoas confirmadas","Adultos","Crianças","Limite","Telefone","Restrição alimentar","Observações","Mensagem carinhosa","Origem","Respondido em"],
   ];
 
   for (const guest of guests) {
     const adults = guest.members
       .filter((member) => member.person_type === "adult")
-      .map((member) => `${member.name} (${attendanceLabel(member.attendance_status)})`)
+      .map((member) => `${member.name} (${attendanceLabel(member.attendance_status, language)})`)
       .join(" | ");
 
     const children = guest.members
       .filter((member) => member.person_type === "child")
-      .map((member) => `${member.name} (${attendanceLabel(member.attendance_status)})`)
+      .map((member) => `${member.name} (${attendanceLabel(member.attendance_status, language)})`)
       .join(" | ");
 
     rows.push([
       guest.primary_name,
       guest.group_label || "",
-      statusLabelText(guest.response_status),
+      statusLabelText(guest.response_status, language),
       guest.confirmed_people,
       adults,
       children,
@@ -3062,16 +3074,18 @@ function csvCell(value) {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
 
-function attendanceLabel(value) {
-  if (value === "yes") return "vai";
-  if (value === "no") return "não vai";
-  return "aguardando";
+function attendanceLabel(value, language = "pt-BR") {
+  const en = language === "en";
+  if (value === "yes") return en ? "attending" : "vai";
+  if (value === "no") return en ? "not attending" : "não vai";
+  return en ? "pending" : "aguardando";
 }
 
-function statusLabelText(value) {
-  if (value === "yes") return "Confirmado";
-  if (value === "no") return "Não irá";
-  return "Pendente";
+function statusLabelText(value, language = "pt-BR") {
+  const en = language === "en";
+  if (value === "yes") return en ? "Confirmed" : "Confirmado";
+  if (value === "no") return en ? "Not attending" : "Não irá";
+  return en ? "Pending" : "Pendente";
 }
 
 // =========================================================
@@ -3082,6 +3096,7 @@ function serializeEvent(row) {
   if (!row) return null;
 
   const availability = getRsvpAvailability(row);
+  const appearance = normalizeAppearance(safeJson(row.appearance_settings, {}));
 
   return {
     id: row.id,
@@ -3096,8 +3111,8 @@ function serializeEvent(row) {
     background_image_url: row.background_image_url || "",
     background_video_url: row.background_video_url || "",
     background_type: normalizeBackgroundType(row.background_type),
-    appearance_settings: normalizeAppearance(safeJson(row.appearance_settings, {})),
-    public_texts: normalizePublicTexts(safeJson(row.public_texts, {})),
+    appearance_settings: appearance,
+    public_texts: normalizePublicTexts(safeJson(row.public_texts, {}), appearance.interface_language),
     client_permissions: normalizeClientPermissions(safeJson(row.client_permissions, {})),
     list_behavior: normalizeListBehavior(row.list_behavior),
     extra_fields: normalizeExtraFields(safeJson(row.extra_fields, {})),
@@ -3247,9 +3262,9 @@ function normalizeAppearance(value) {
     card_width: ["narrow", "medium", "wide"].includes(source.card_width)
       ? source.card_width
       : DEFAULT_APPEARANCE.card_width,
+    interface_language: source.interface_language === "en" ? "en" : "pt-BR",
     invitation_url: safeOptionalStoredUrl(source.invitation_url),
     calendar_location: cleanOptionalText(source.calendar_location, 300) || "",
-    location_url: safeOptionalStoredUrl(source.location_url),
     calendar_end_time: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(source.calendar_end_time || ""))
       ? String(source.calendar_end_time)
       : "",
@@ -3258,11 +3273,12 @@ function normalizeAppearance(value) {
   };
 }
 
-function normalizePublicTexts(value) {
+function normalizePublicTexts(value, language = "pt-BR") {
   const source = value && typeof value === "object" ? value : {};
+  const defaults = language === "en" ? DEFAULT_PUBLIC_TEXTS_EN : DEFAULT_PUBLIC_TEXTS;
   const result = {};
 
-  for (const [key, fallback] of Object.entries(DEFAULT_PUBLIC_TEXTS)) {
+  for (const [key, fallback] of Object.entries(defaults)) {
     const candidate = source[key];
     result[key] = candidate === undefined || candidate === null
       ? fallback
