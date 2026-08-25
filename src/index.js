@@ -3643,16 +3643,15 @@ function withRsvpFramePolicy(response, request) {
   }
 
   const embed = url.searchParams.get("embed") === "1";
-  const headers = new Headers(response.headers);
 
-  if (embed) {
-    headers.delete("x-frame-options");
-    setFrameAncestors(headers, LIBRI_INVITATION_FRAME_ORIGINS.join(" "));
-  } else {
-    headers.set("x-frame-options", "DENY");
-    setFrameAncestors(headers, "'none'");
+  // Fluxo normal do RSVP deve permanecer 100% intocado.
+  if (!embed) {
+    return response;
   }
 
+  const headers = new Headers(response.headers);
+  headers.delete("x-frame-options");
+  setFrameAncestors(headers, LIBRI_INVITATION_FRAME_ORIGINS.join(" "));
   headers.set("x-content-type-options", "nosniff");
   headers.set("x-robots-tag", "noindex, nofollow, noarchive");
 
