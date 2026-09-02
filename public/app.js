@@ -63,6 +63,7 @@ function translateServerMessage(message,lang=activeInterfaceLanguage){
   "Informe o nome do responsável pela confirmação.":"Enter the primary contact name.",
   "O nome informado é muito longo.":"The name is too long.",
   "Envie pelo menos um convidado para importar.":"Add at least one guest to import.",
+  "Selecione pelo menos um convidado.":"Select at least one guest.",
   "A URL informada não é válida.":"The URL is invalid.",
   "A mídia precisa usar um endereço http ou https.":"Media must use an http or https address.",
   "Rota não encontrada.":"Route not found."
@@ -70,6 +71,7 @@ function translateServerMessage(message,lang=activeInterfaceLanguage){
  if(exact[m])return exact[m];
  m=m.replace(/^Esta confirmação permite no máximo (\d+) pessoa\(s\) presentes\.$/,"This RSVP allows up to $1 attendees.");
  m=m.replace(/^Importe no máximo (\d+) confirmações por vez\.$/,"Import up to $1 RSVPs at a time.");
+ m=m.replace(/^Exclua no máximo (\d+) convidados por vez\.$/,"Delete up to $1 guests at a time.");
  m=m.replace(/^Esta confirmação permite no máximo (\d+) pessoa\(s\)\.$/,"This RSVP allows up to $1 people.");
  m=m.replace(/^(.+) já está nesta confirmação\.$/,"$1 is already included in this RSVP.");
  m=m.replace(/^(.+) já consta em outra confirmação deste evento\.$/,"$1 is already included in another RSVP for this event.");
@@ -95,6 +97,53 @@ const isRecentResponse=v=>{
  const t=new Date(v).getTime();
  return Number.isFinite(t)&&Date.now()-t>=0&&Date.now()-t<24*60*60*1000;
 };
+
+const duplicateNameKey=value=>String(value||"")
+ .normalize("NFD")
+ .replace(/[\u0300-\u036f]/g,"")
+ .toLowerCase()
+ .replace(/[^a-z0-9]+/g," ")
+ .trim();
+
+function markPossibleDuplicateGuests(guests){
+ const groups=new Map(),result=(guests||[]).map(guest=>({...guest}));
+ result.forEach(guest=>{const key=duplicateNameKey(guest.primary_name);if(!key)return;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(guest)});
+ for(const rows of groups.values()){
+  if(rows.length<2)continue;
+  rows.sort((a,b)=>{const ar=a.responded_at?0:1,br=b.responded_at?0:1;if(ar!==br)return ar-br;return String(a.created_at||"").localeCompare(String(b.created_at||""))||String(a.id).localeCompare(String(b.id))});
+  rows.forEach((guest,index)=>{guest.possible_duplicate=true;guest.duplicate_group_size=rows.length;guest.suggested_keep=index===0});
+ }
+ return result;
+}
+
+async function deleteGuestsInSmallBatches(base,ids){
+ let deleted=0;
+ const failed=[];
+ for(let index=0;index<ids.length;index+=5){
+  const batch=ids.slice(index,index+5);
+  const results=await Promise.allSettled(batch.map(id=>api(`${base}/guests/${encodeURIComponent(id)}`,{method:"DELETE",body:"{}"})));
+  results.forEach((result,position)=>{if(result.status==="fulfilled")deleted+=1;else failed.push({id:batch[position],message:result.reason?.message||"Falha ao excluir."})});
+ }
+ return{deleted,failed};
+}
+
+function installBulkGuestStyles(){
+ if(document.querySelector("#libriBulkGuestStyles"))return;
+ const style=document.createElement("style");
+ style.id="libriBulkGuestStyles";
+ style.textContent=`
+  .bulk-selection{margin:0 0 12px;padding:10px 12px;display:flex;align-items:center;gap:12px;border:1px solid rgba(184,116,98,.24);border-radius:15px;background:rgba(255,250,247,.96);box-shadow:var(--shadow-xs)}
+  .bulk-selection[hidden]{display:none}.bulk-selection>.actions{margin-left:auto}.bulk-selection-check{display:inline-flex;align-items:center;gap:7px;color:var(--ink);cursor:pointer;font-size:12px;font-weight:700}
+  .bulk-selection-check input,.guest-select input{margin:0;accent-color:var(--libri-copper)}.bulk-selection-check input{width:17px;height:17px}.guest-select input{width:20px;height:20px}
+  .guest-card.selected{border-color:rgba(184,116,98,.62);background:rgba(251,241,238,.86);box-shadow:0 0 0 2px rgba(184,116,98,.10),var(--shadow-xs)}
+  .guest-card-title-wrap{min-width:0;display:flex;align-items:flex-start;gap:10px}.guest-select{flex:0 0 auto;padding-top:1px;cursor:pointer}
+  .chip.duplicate.keep{border-color:rgba(61,138,100,.24);background:rgba(61,138,100,.10);color:#2d7554}.chip.duplicate.copy{border-color:rgba(191,93,75,.26);background:rgba(191,93,75,.10);color:#a6493b}
+  @media(max-width:700px){.bulk-selection{align-items:stretch;flex-direction:column}.bulk-selection>.actions{width:100%;margin-left:0}.bulk-selection>.actions .btn{flex:1}}
+ `;
+ document.head.append(style);
+}
+
+installBulkGuestStyles();
 
 const dateKeySao=d=>{
  try{
@@ -411,33 +460,72 @@ function overview(root,e,s,info,role){
 async function guestsTab({root,event,role,eventId,token}){
  const L=role==="client"?eventLang(event):"pt-BR",p=safePerms(event),canManage=role==="admin"||p.manage_guests,canExport=role==="admin"||p.export_guests,base=role==="admin"?`/api/admin/events/${eventId}`:`/api/client/${encodeURIComponent(token)}`;
  root.innerHTML=`${event.rsvp_mode==="list"?`<section class="guide-card"><div class="guide-icon">✦</div><div><h3>${tr(L,"Lista fechada","Guest list")}</h3><p>${tr(L,"Cadastre cada adulto e criança pelo nome. Qualquer integrante poderá ser encontrado no convite.","Add every adult and child by name. Any family member can be found on the invitation.")}</p></div></section>`:""}
- <div class="section-title"><div><h2>${tr(L,"Convidados","Guests")}</h2><span class="meta">${tr(L,"Busca por família, responsável ou qualquer integrante.","Search by family, primary contact or any guest.")}</span></div><div class="actions">${canExport?`<button class="btn secondary small" id="export">${tr(L,"Exportar CSV","Export CSV")}</button><button class="btn secondary small" id="exportPdf">${tr(L,"Exportar PDF","Export PDF")}</button>`:""}${canManage?`<button class="btn secondary small" id="bulk">${tr(L,"+ Adicionar vários","+ Add multiple")}</button><button class="btn" id="add">${tr(L,"+ Cadastrar convidado/família","+ Add guest/family")}</button>`:""}</div></div>
- <div class="toolbar"><div class="search-shell"><input id="search" placeholder="${tr(L,"Digite para buscar...","Type to search...")}" autocomplete="off"><button type="button" class="search-clear" id="clearSearch" aria-label="${tr(L,"Limpar busca","Clear search")}" title="${tr(L,"Limpar busca","Clear search")}" hidden>×</button></div><div class="segmented"><button class="active" data-filter=""><span>${tr(L,"Todos","All")}</span><b data-count="total">0</b></button><button data-filter="yes"><span>${tr(L,"Confirmados","Confirmed")}</span><b data-count="yes">0</b></button><button data-filter="pending"><span>${tr(L,"Aguardando","Pending")}</span><b data-count="pending">0</b></button><button data-filter="no"><span>${tr(L,"Não irão","Not attending")}</span><b data-count="no">0</b></button></div></div><div id="guestList">${loading(L)}</div>`;
- let q="",status="",timer;
+ <div class="section-title"><div><h2>${tr(L,"Convidados","Guests")}</h2><span class="meta">${tr(L,"Busca por família, responsável ou qualquer integrante.","Search by family, primary contact or any guest.")}</span></div><div class="actions">${canExport?`<button class="btn secondary small" id="export">${tr(L,"Exportar CSV","Export CSV")}</button><button class="btn secondary small" id="exportPdf">${tr(L,"Exportar PDF","Export PDF")}</button>`:""}${canManage?`<button class="btn secondary small" id="selectGuests">${tr(L,"Selecionar vários","Select multiple")}</button><button class="btn secondary small" id="bulk">${tr(L,"+ Adicionar vários","+ Add multiple")}</button><button class="btn" id="add">${tr(L,"+ Cadastrar convidado/família","+ Add guest/family")}</button>`:""}</div></div>
+ <div class="toolbar"><div class="search-shell"><input id="search" placeholder="${tr(L,"Digite para buscar...","Type to search...")}" autocomplete="off"><button type="button" class="search-clear" id="clearSearch" aria-label="${tr(L,"Limpar busca","Clear search")}" title="${tr(L,"Limpar busca","Clear search")}" hidden>×</button></div><div class="segmented"><button class="active" data-filter=""><span>${tr(L,"Todos","All")}</span><b data-count="total">0</b></button><button data-filter="yes"><span>${tr(L,"Confirmados","Confirmed")}</span><b data-count="yes">0</b></button><button data-filter="pending"><span>${tr(L,"Aguardando","Pending")}</span><b data-count="pending">0</b></button><button data-filter="no"><span>${tr(L,"Não irão","Not attending")}</span><b data-count="no">0</b></button><button data-filter="duplicates"><span>${tr(L,"Possíveis duplicados","Possible duplicates")}</span><b data-count="duplicates">0</b></button></div></div>
+ ${canManage?`<div class="bulk-selection" id="selectionBar" hidden><label class="bulk-selection-check"><input type="checkbox" id="selectVisible"> <span>${tr(L,"Selecionar todos exibidos","Select all shown")}</span></label><strong id="selectedCount">${tr(L,"0 selecionados","0 selected")}</strong><div class="actions"><button class="btn secondary small" type="button" id="selectCopies" hidden>${tr(L,"Selecionar repetições","Select copies")}</button><button class="btn danger small" type="button" id="deleteSelected" disabled>${tr(L,"Excluir selecionados","Delete selected")}</button><button class="btn secondary small" type="button" id="cancelSelection">${tr(L,"Cancelar","Cancel")}</button></div></div>`:""}
+ <div id="guestList">${loading(L)}</div>`;
+ let q="",status="",duplicates=false,timer,selectionMode=false,currentGuests=[];
+ const selectedIds=new Set();
  const search=root.querySelector("#search"),clear=root.querySelector("#clearSearch");
  const updateCounts=counts=>{for(const [k,v] of Object.entries(counts||{})){const el=root.querySelector(`[data-count="${k}"]`);if(el)el.textContent=Number(v||0)}};
- const refresh=async()=>{try{const d=await api(`${base}/guests?q=${encodeURIComponent(q)}&status=${status}`);updateCounts(d.counts);root.querySelector("#guestList").innerHTML=guestCards(d.guests,canManage,L);if(canManage)bindGuestActions(root,{event,role,eventId,token,L})}catch(e){root.querySelector("#guestList").innerHTML=`<div class="empty">${esc(e.message)}</div>`}};
- search.oninput=e=>{q=e.target.value;clear.hidden=!q;clearTimeout(timer);timer=setTimeout(refresh,220)};
- clear.onclick=()=>{q="";search.value="";clear.hidden=true;search.focus();refresh()};
- root.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-filter]").forEach(x=>x.classList.remove("active"));b.classList.add("active");status=b.dataset.filter;refresh()});
+ const updateSelection=()=>{
+  if(!canManage)return;
+  const bar=root.querySelector("#selectionBar"),count=root.querySelector("#selectedCount"),del=root.querySelector("#deleteSelected"),all=root.querySelector("#selectVisible"),copies=root.querySelector("#selectCopies");
+  bar.hidden=!selectionMode;
+  count.textContent=tr(L,`${selectedIds.size} selecionado(s)`,`${selectedIds.size} selected`);
+  del.disabled=!selectedIds.size;
+  copies.hidden=!duplicates;
+  const visibleIds=currentGuests.map(g=>g.id);
+  all.checked=!!visibleIds.length&&visibleIds.every(id=>selectedIds.has(id));
+  all.indeterminate=visibleIds.some(id=>selectedIds.has(id))&&!all.checked;
+ };
+ const renderList=()=>{
+  root.querySelector("#guestList").innerHTML=guestCards(currentGuests,canManage,L,{selectionMode,selectedIds});
+  if(canManage)bindGuestActions(root,{event,role,eventId,token,L,selectionMode,selectedIds,onSelectionChange:updateSelection,onChanged:refresh});
+  updateSelection();
+ };
+ const refresh=async()=>{try{const d=await api(`${base}/guests?q=${encodeURIComponent(q)}&status=${status}`),marked=markPossibleDuplicateGuests(d.guests||[]),possible=marked.filter(g=>g.possible_duplicate);updateCounts({...d.counts,duplicates:possible.length});currentGuests=duplicates?possible:(d.guests||[]);renderList()}catch(e){root.querySelector("#guestList").innerHTML=`<div class="empty">${esc(e.message)}</div>`}};
+ const resetSelection=()=>{selectedIds.clear();updateSelection()};
+ search.oninput=e=>{q=e.target.value;clear.hidden=!q;resetSelection();clearTimeout(timer);timer=setTimeout(refresh,220)};
+ clear.onclick=()=>{q="";search.value="";clear.hidden=true;search.focus();resetSelection();refresh()};
+ root.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-filter]").forEach(x=>x.classList.remove("active"));b.classList.add("active");duplicates=b.dataset.filter==="duplicates";status=duplicates?"":b.dataset.filter;resetSelection();refresh()});
  if(canExport){
   root.querySelector("#export").onclick=()=>location.href=role==="admin"?`/api/admin/events/${eventId}/export.csv`:`/api/client/${encodeURIComponent(token)}/export.csv`;
   root.querySelector("#exportPdf").onclick=()=>exportEventPdf({event,base});
  }
- if(canManage){root.querySelector("#add").onclick=()=>guestModal({event,role,eventId,token,onSaved:refresh});root.querySelector("#bulk").onclick=()=>bulkModal({event,role,eventId,token,onSaved:refresh})}
+ if(canManage){
+  root.querySelector("#add").onclick=()=>guestModal({event,role,eventId,token,onSaved:refresh});
+  root.querySelector("#bulk").onclick=()=>bulkModal({event,role,eventId,token,onSaved:refresh});
+  root.querySelector("#selectGuests").onclick=()=>{selectionMode=true;selectedIds.clear();renderList()};
+  root.querySelector("#cancelSelection").onclick=()=>{selectionMode=false;selectedIds.clear();renderList()};
+  root.querySelector("#selectVisible").onchange=e=>{currentGuests.forEach(g=>e.target.checked?selectedIds.add(g.id):selectedIds.delete(g.id));renderList()};
+  root.querySelector("#selectCopies").onclick=()=>{currentGuests.filter(g=>g.possible_duplicate&&!g.suggested_keep).forEach(g=>selectedIds.add(g.id));renderList()};
+  root.querySelector("#deleteSelected").onclick=async()=>{
+   const ids=[...selectedIds];
+   if(!ids.length)return;
+   const selectedSuggestedKeep=currentGuests.some(g=>g.suggested_keep&&selectedIds.has(g.id));
+   const warning=selectedSuggestedKeep?tr(L," Atenção: a seleção inclui pelo menos um cadastro sugerido para manter."," Warning: the selection includes at least one record suggested to keep."):"";
+   if(!confirm(tr(L,`Excluir ${ids.length} convidado(s)? Eles irão para a lixeira e poderão ser restaurados.${warning}`,`Delete ${ids.length} guest(s)? They will go to the trash and can be restored.${warning}`)))return;
+   const button=root.querySelector("#deleteSelected");button.disabled=true;
+   try{const result=await deleteGuestsInSmallBatches(base,ids);selectedIds.clear();await refresh();if(result.failed.length)toast(tr(L,`${result.deleted} excluído(s) e ${result.failed.length} falharam. Tente novamente nos que restaram.`,`${result.deleted} deleted and ${result.failed.length} failed. Try the remaining records again.`),true);else toast(tr(L,`${result.deleted} convidado(s) excluído(s).`,`${result.deleted} guest(s) deleted.`))}catch(e){toast(e.message,true);button.disabled=false}
+  };
+ }
  await refresh();
 }
-function guestCards(guests,editable,L="pt-BR"){
+function guestCards(guests,editable,L="pt-BR",options={}){
  if(!guests.length)return`<div class="empty">${tr(L,"Nenhum convidado encontrado.","No guests found.")}</div>`;
- return`<div class="guest-list">${guests.map(g=>`<article class="guest-card${isRecentResponse(g.responded_at)?" recent-response":""}"><div class="guest-card-head"><div><div class="chips"><span class="status ${g.response_status}">${statusLabel(g.response_status,L)}</span>${isRecentResponse(g.responded_at)?`<span class="chip new-response">${tr(L,"NOVA","NEW")}</span>`:""}${g.max_people_allowed?`<span class="chip">${tr(L,"limite","limit")} ${g.max_people_allowed}</span>`:""}</div><h3 class="guest-card-name">${esc(g.group_label||g.primary_name)}</h3>${g.group_label?`<div class="guest-card-group">${tr(L,"Contato","Primary contact")}: ${esc(g.primary_name)}</div>`:""}</div><span class="subtle">${esc(sourceLabel(g.source,L))}</span></div>
+ const selectionMode=!!options.selectionMode,selectedIds=options.selectedIds||new Set();
+ return`<div class="guest-list">${guests.map(g=>`<article class="guest-card${isRecentResponse(g.responded_at)?" recent-response":""}${selectedIds.has(g.id)?" selected":""}" data-guest-card="${esc(g.id)}"><div class="guest-card-head"><div class="guest-card-title-wrap">${editable&&selectionMode?`<label class="guest-select"><input type="checkbox" data-select-guest="${esc(g.id)}" aria-label="${tr(L,"Selecionar","Select")} ${esc(g.group_label||g.primary_name)}" ${selectedIds.has(g.id)?"checked":""}><span></span></label>`:""}<div><div class="chips"><span class="status ${g.response_status}">${statusLabel(g.response_status,L)}</span>${isRecentResponse(g.responded_at)?`<span class="chip new-response">${tr(L,"NOVA","NEW")}</span>`:""}${g.max_people_allowed?`<span class="chip">${tr(L,"limite","limit")} ${g.max_people_allowed}</span>`:""}${g.possible_duplicate?`<span class="chip duplicate ${g.suggested_keep?"keep":"copy"}">${g.suggested_keep?tr(L,"Sugestão: manter","Suggested: keep"):tr(L,"Possível repetição","Possible copy")}</span>`:""}</div><h3 class="guest-card-name">${esc(g.group_label||g.primary_name)}</h3>${g.group_label?`<div class="guest-card-group">${tr(L,"Contato","Primary contact")}: ${esc(g.primary_name)}</div>`:""}</div></div><span class="subtle">${esc(sourceLabel(g.source,L))}</span></div>
  <div class="guest-card-members">${g.members.length?g.members.map(m=>`<div class="guest-member"><span class="guest-member-icon">${m.person_type==="child"?"🧒":"👤"}</span><span class="guest-member-name">${esc(m.name)}</span><span class="badge ${m.attendance_status==="yes"?"good":m.attendance_status==="no"?"bad":"pending"}">${attendanceLabel(m.attendance_status,L)}</span></div>`).join(""):`<div class="subtle">${tr(L,"Nenhuma pessoa cadastrada.","No people registered.")}</div>`}</div>
  ${g.love_message?`<div class="notice" style="margin-top:10px">💌 ${esc(g.love_message)}</div>`:""}
- <div class="guest-card-footer"><div class="guest-card-contact">${g.phone?`☎ ${esc(g.phone)}`:tr(L,"Sem telefone","No phone")}${g.responded_at?`<span class="response-time"> • ${esc(fmtResponseTime(g.responded_at,L))}</span>`:""}</div>${editable?`<div class="guest-card-actions"><button class="btn secondary small" data-edit='${esc(JSON.stringify(g))}'>${tr(L,"Editar","Edit")}</button><button class="btn danger small" data-delete="${g.id}" data-name="${esc(g.group_label||g.primary_name)}">${tr(L,"Excluir","Delete")}</button></div>`:""}</div></article>`).join("")}</div>`;
+ <div class="guest-card-footer"><div class="guest-card-contact">${g.phone?`☎ ${esc(g.phone)}`:tr(L,"Sem telefone","No phone")}${g.responded_at?`<span class="response-time"> • ${esc(fmtResponseTime(g.responded_at,L))}</span>`:""}</div>${editable&&!selectionMode?`<div class="guest-card-actions"><button class="btn secondary small" data-edit='${esc(JSON.stringify(g))}'>${tr(L,"Editar","Edit")}</button><button class="btn danger small" data-delete="${g.id}" data-name="${esc(g.group_label||g.primary_name)}">${tr(L,"Excluir","Delete")}</button></div>`:""}</div></article>`).join("")}</div>`;
 }
 function bindGuestActions(root,ctx){
  const L=ctx.L||"pt-BR";
- root.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>guestModal({...ctx,guest:JSON.parse(b.dataset.edit),onSaved:()=>ctx.role==="admin"?renderAdminEvent(ctx.eventId,"guests"):clientApp(ctx.token,"guests")}));
- root.querySelectorAll("[data-delete]").forEach(b=>b.onclick=async()=>{if(!confirm(tr(L,`Excluir ${b.dataset.name}?`,`Delete ${b.dataset.name}?`)))return;const base=ctx.role==="admin"?`/api/admin/events/${ctx.eventId}`:`/api/client/${encodeURIComponent(ctx.token)}`;try{await api(`${base}/guests/${b.dataset.delete}`,{method:"DELETE",body:"{}"});toast(tr(L,"Convidado excluído.","Guest deleted."));ctx.role==="admin"?renderAdminEvent(ctx.eventId,"guests"):clientApp(ctx.token,"guests")}catch(e){toast(e.message,true)}})
+ const changed=ctx.onChanged||(()=>ctx.role==="admin"?renderAdminEvent(ctx.eventId,"guests"):clientApp(ctx.token,"guests"));
+ root.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>guestModal({...ctx,guest:JSON.parse(b.dataset.edit),onSaved:changed}));
+ root.querySelectorAll("[data-delete]").forEach(b=>b.onclick=async()=>{if(!confirm(tr(L,`Excluir ${b.dataset.name}?`,`Delete ${b.dataset.name}?`)))return;const base=ctx.role==="admin"?`/api/admin/events/${ctx.eventId}`:`/api/client/${encodeURIComponent(ctx.token)}`;try{await api(`${base}/guests/${b.dataset.delete}`,{method:"DELETE",body:"{}"});toast(tr(L,"Convidado excluído.","Guest deleted."));changed()}catch(e){toast(e.message,true)}});
+ root.querySelectorAll("[data-select-guest]").forEach(input=>input.onchange=()=>{input.checked?ctx.selectedIds.add(input.dataset.selectGuest):ctx.selectedIds.delete(input.dataset.selectGuest);input.closest(".guest-card")?.classList.toggle("selected",input.checked);ctx.onSelectionChange?.()})
 }
 function guestModal({event,role,eventId,token,guest=null,onSaved}){
  const L=role==="client"?eventLang(event):"pt-BR";
@@ -684,7 +772,7 @@ function adminSettings(root,info){
 }
 const setting=(l,v)=>`<div class="setting-card"><div><h4>${esc(l)}</h4><p>${esc(v)}</p></div></div>`;
 
-async function historyModal(id){try{const d=await api(`/api/admin/events/${id}/audit?limit=200`),w=modal("Histórico",d.logs.length?`<div class="history-list">${d.logs.map(x=>`<div class="history-item"><strong>${esc(({event_created:"Evento criado",event_updated:"Evento editado",guest_created:"Convidado cadastrado",guest_updated:"Convidado editado",guest_deleted:"Convidado excluído",guest_restored:"Convidado restaurado",rsvp_submitted:"Confirmação enviada",media_uploaded:"Mídia enviada",media_deleted:"Mídia removida",event_duplicated:"Evento duplicado"}[x.action]||x.action))}</strong><div class="subtle">${esc(fmtDT(x.created_at))}</div></div>`).join("")}</div>`:`<div class="empty">Sem registros.</div>`)}catch(e){toast(e.message,true)}}
+async function historyModal(id){try{const d=await api(`/api/admin/events/${id}/audit?limit=200`),w=modal("Histórico",d.logs.length?`<div class="history-list">${d.logs.map(x=>`<div class="history-item"><strong>${esc(({event_created:"Evento criado",event_updated:"Evento editado",guest_created:"Convidado cadastrado",guest_updated:"Convidado editado",guest_deleted:"Convidado excluído",guest_bulk_deleted:"Convidados excluídos em lote",guest_restored:"Convidado restaurado",rsvp_submitted:"Confirmação enviada",media_uploaded:"Mídia enviada",media_deleted:"Mídia removida",event_duplicated:"Evento duplicado"}[x.action]||x.action))}</strong><div class="subtle">${esc(fmtDT(x.created_at))}</div></div>`).join("")}</div>`:`<div class="empty">Sem registros.</div>`)}catch(e){toast(e.message,true)}}
 async function trashModal(id){try{const d=await api(`/api/admin/events/${id}/trash`),w=modal("Lixeira",d.guests.length?`<div class="guest-list">${d.guests.map(g=>`<article class="guest-card"><div class="guest-card-head"><div><h3>${esc(g.group_label||g.primary_name)}</h3><div class="subtle">${esc(fmtDT(g.deleted_at))}</div></div><button class="btn secondary small" data-rest="${g.id}">Restaurar</button></div></article>`).join("")}</div>`:`<div class="empty">Lixeira vazia.</div>`);w.querySelectorAll("[data-rest]").forEach(b=>b.onclick=async()=>{await api(`/api/admin/events/${id}/guests/${b.dataset.rest}/restore`,{method:"POST",body:"{}"});w.closeModal();toast("Restaurado.");renderAdminEvent(id,"guests")})}catch(e){toast(e.message,true)}}
 
 async function clientApp(token,requested="overview"){
