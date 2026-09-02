@@ -8,7 +8,7 @@ const MEDIA_PUBLIC_BASE = "https://midia.libriconvites.com.br";
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
 const MAX_BULK_GUESTS = 300;
-
+const D1_SAFE_BINDING_BATCH_SIZE = 90;
 const IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -2326,22 +2326,51 @@ async function bulkCreateGuests(env, event, rows, source) {
   return { created, failed };
 }
 
-async function softDeleteGuest(env, eventId, guestId) {
-  const currentTime = now();
+async function hydrateGuests(env, rows, includeDeleted = false) {
+  if (!rows.length) return [];
 
-  await env.DB.batch([
-    env.DB.prepare(`
-      UPDATE guests
-      SET deleted_at = ?, updated_at = ?
-      WHERE id = ? AND event_id = ? AND deleted_at IS NULL
-    `).bind(currentTime, currentTime, guestId, eventId),
+  const guestIds = rows.map((row) => row.id);
+  const statements = [];
 
-    env.DB.prepare(`
-      UPDATE guest_members
-      SET deleted_at = ?, updated_at = ?
-      WHERE guest_id = ? AND event_id = ? AND deleted_at IS NULL
-    `).bind(currentTime, currentTime, guestId, eventId),
-  ]);
+  for (
+    let index = 0;
+    index < guestIds.length;
+    index += D1_SAFE_BINDING_BATCH_SIZE
+  ) {
+    const batchIds = guestIds.slice(
+      index,
+      index + D1_SAFE_BINDING_BATCH_SIZE
+    );
+
+    const placeholders = batchIds.map(() => "?").join(",");
+
+    statements.push(
+      env.DB.prepare(`
+        SELECT *
+        FROM guest_members
+        WHERE guest_id IN (${placeholders})
+        ${includeDeleted ? "" : "AND deleted_at IS NULL"}
+        ORDER BY sort_order ASC, name COLLATE NOCASE ASC
+      `).bind(...batchIds)
+    );
+  }
+
+  const results = await env.DB.batch(statements);
+  const map = new Map();
+
+  for (const result of results) {
+    for (const member of result.results || []) {
+      if (!map.has(member.guest_id)) {
+        map.set(member.guest_id, []);
+      }
+
+      map.get(member.guest_id).push(serializeMember(member));
+    }
+  }
+
+  return rows.map((row) =>
+    serializeGuestRow(row, map.get(row.id) || [])
+  );
 }
 
 async function restoreGuest(env, eventId, guestId) {
