@@ -9,6 +9,7 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
 const MAX_BULK_GUESTS = 300;
 const D1_SAFE_BINDING_BATCH_SIZE = 90;
+
 const IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -2366,47 +2367,10 @@ async function hydrateGuests(env, rows, includeDeleted = false) {
   if (!rows.length) return [];
 
   const guestIds = rows.map((row) => row.id);
-  const placeholders = guestIds.map(() => "?").join(",");
-
-  const result = await env.DB.prepare(`
-    SELECT *
-    FROM guest_members
-    WHERE guest_id IN (${placeholders})
-    ${includeDeleted ? "" : "AND deleted_at IS NULL"}
-    ORDER BY sort_order ASC, name COLLATE NOCASE ASC
-  `)
-    .bind(...guestIds)
-    .all();
-
-  const map = new Map();
-
-  for (const member of result.results) {
-    if (!map.has(member.guest_id)) {
-      map.set(member.guest_id, []);
-    }
-
-    map.get(member.guest_id).push(serializeMember(member));
-  }
-
-  return rows.map((row) => serializeGuestRow(row, map.get(row.id) || []));
-}
-
-async function hydrateGuests(env, rows, includeDeleted = false) {
-  if (!rows.length) return [];
-
-  const guestIds = rows.map((row) => row.id);
   const statements = [];
 
-  for (
-    let index = 0;
-    index < guestIds.length;
-    index += D1_SAFE_BINDING_BATCH_SIZE
-  ) {
-    const batchIds = guestIds.slice(
-      index,
-      index + D1_SAFE_BINDING_BATCH_SIZE
-    );
-
+  for (let index = 0; index < guestIds.length; index += D1_SAFE_BINDING_BATCH_SIZE) {
+    const batchIds = guestIds.slice(index, index + D1_SAFE_BINDING_BATCH_SIZE);
     const placeholders = batchIds.map(() => "?").join(",");
 
     statements.push(
@@ -2421,6 +2385,7 @@ async function hydrateGuests(env, rows, includeDeleted = false) {
   }
 
   const results = await env.DB.batch(statements);
+
   const map = new Map();
 
   for (const result of results) {
@@ -2433,10 +2398,37 @@ async function hydrateGuests(env, rows, includeDeleted = false) {
     }
   }
 
-  return rows.map((row) =>
-    serializeGuestRow(row, map.get(row.id) || [])
-  );
+  return rows.map((row) => serializeGuestRow(row, map.get(row.id) || []));
 }
+
+async function hydrateGuest(env, row) {
+  const result = await env.DB.prepare(`
+    SELECT *
+    FROM guest_members
+    WHERE guest_id = ? AND deleted_at IS NULL
+    ORDER BY sort_order ASC, name COLLATE NOCASE ASC
+  `)
+    .bind(row.id)
+    .all();
+
+  return serializeGuestRow(row, result.results.map(serializeMember));
+}
+
+async function findDuplicateMembers(env, eventId, members, excludeGuestId = null) {
+  const normalizedNames = [
+    ...new Set(
+      (members || [])
+        .map((member) => normalizeName(member.name))
+        .filter(Boolean)
+    ),
+  ];
+
+  if (!normalizedNames.length) return [];
+
+  const placeholders = normalizedNames.map(() => "?").join(",");
+
+  let sql = `
+    SELECT
       gm.name,
       gm.normalized_name,
       gm.guest_id,
@@ -3697,3 +3689,4 @@ async function serveApp(request, env) {
   const fallback = await env.ASSETS.fetch(new Request(url.toString(), request));
   return withRsvpFramePolicy(fallback, request);
 }
+
