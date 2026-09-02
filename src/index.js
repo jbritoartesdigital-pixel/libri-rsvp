@@ -2326,51 +2326,22 @@ async function bulkCreateGuests(env, event, rows, source) {
   return { created, failed };
 }
 
-async function hydrateGuests(env, rows, includeDeleted = false) {
-  if (!rows.length) return [];
+async function softDeleteGuest(env, eventId, guestId) {
+  const currentTime = now();
 
-  const guestIds = rows.map((row) => row.id);
-  const statements = [];
+  await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE guests
+      SET deleted_at = ?, updated_at = ?
+      WHERE id = ? AND event_id = ? AND deleted_at IS NULL
+    `).bind(currentTime, currentTime, guestId, eventId),
 
-  for (
-    let index = 0;
-    index < guestIds.length;
-    index += D1_SAFE_BINDING_BATCH_SIZE
-  ) {
-    const batchIds = guestIds.slice(
-      index,
-      index + D1_SAFE_BINDING_BATCH_SIZE
-    );
-
-    const placeholders = batchIds.map(() => "?").join(",");
-
-    statements.push(
-      env.DB.prepare(`
-        SELECT *
-        FROM guest_members
-        WHERE guest_id IN (${placeholders})
-        ${includeDeleted ? "" : "AND deleted_at IS NULL"}
-        ORDER BY sort_order ASC, name COLLATE NOCASE ASC
-      `).bind(...batchIds)
-    );
-  }
-
-  const results = await env.DB.batch(statements);
-  const map = new Map();
-
-  for (const result of results) {
-    for (const member of result.results || []) {
-      if (!map.has(member.guest_id)) {
-        map.set(member.guest_id, []);
-      }
-
-      map.get(member.guest_id).push(serializeMember(member));
-    }
-  }
-
-  return rows.map((row) =>
-    serializeGuestRow(row, map.get(row.id) || [])
-  );
+    env.DB.prepare(`
+      UPDATE guest_members
+      SET deleted_at = ?, updated_at = ?
+      WHERE guest_id = ? AND event_id = ? AND deleted_at IS NULL
+    `).bind(currentTime, currentTime, guestId, eventId),
+  ]);
 }
 
 async function restoreGuest(env, eventId, guestId) {
@@ -2420,34 +2391,52 @@ async function hydrateGuests(env, rows, includeDeleted = false) {
   return rows.map((row) => serializeGuestRow(row, map.get(row.id) || []));
 }
 
-async function hydrateGuest(env, row) {
-  const result = await env.DB.prepare(`
-    SELECT *
-    FROM guest_members
-    WHERE guest_id = ? AND deleted_at IS NULL
-    ORDER BY sort_order ASC, name COLLATE NOCASE ASC
-  `)
-    .bind(row.id)
-    .all();
+async function hydrateGuests(env, rows, includeDeleted = false) {
+  if (!rows.length) return [];
 
-  return serializeGuestRow(row, result.results.map(serializeMember));
+  const guestIds = rows.map((row) => row.id);
+  const statements = [];
+
+  for (
+    let index = 0;
+    index < guestIds.length;
+    index += D1_SAFE_BINDING_BATCH_SIZE
+  ) {
+    const batchIds = guestIds.slice(
+      index,
+      index + D1_SAFE_BINDING_BATCH_SIZE
+    );
+
+    const placeholders = batchIds.map(() => "?").join(",");
+
+    statements.push(
+      env.DB.prepare(`
+        SELECT *
+        FROM guest_members
+        WHERE guest_id IN (${placeholders})
+        ${includeDeleted ? "" : "AND deleted_at IS NULL"}
+        ORDER BY sort_order ASC, name COLLATE NOCASE ASC
+      `).bind(...batchIds)
+    );
+  }
+
+  const results = await env.DB.batch(statements);
+  const map = new Map();
+
+  for (const result of results) {
+    for (const member of result.results || []) {
+      if (!map.has(member.guest_id)) {
+        map.set(member.guest_id, []);
+      }
+
+      map.get(member.guest_id).push(serializeMember(member));
+    }
+  }
+
+  return rows.map((row) =>
+    serializeGuestRow(row, map.get(row.id) || [])
+  );
 }
-
-async function findDuplicateMembers(env, eventId, members, excludeGuestId = null) {
-  const normalizedNames = [
-    ...new Set(
-      (members || [])
-        .map((member) => normalizeName(member.name))
-        .filter(Boolean)
-    ),
-  ];
-
-  if (!normalizedNames.length) return [];
-
-  const placeholders = normalizedNames.map(() => "?").join(",");
-
-  let sql = `
-    SELECT
       gm.name,
       gm.normalized_name,
       gm.guest_id,
