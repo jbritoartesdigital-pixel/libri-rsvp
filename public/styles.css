@@ -2401,17 +2401,17 @@ input[type="range"] {
 }
 
 .public-family-title {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   color: var(--event-text);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 850;
 }
 
 .public-person {
-  padding: 9px 0;
+  padding: 12px 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(178px, 210px);
+  gap: 12px;
   align-items: center;
   border-bottom: 1px solid rgba(124,67,57,.09);
 }
@@ -2421,15 +2421,47 @@ input[type="range"] {
 }
 
 .public-person-name {
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 750;
 }
 
 .public-person small {
   display: block;
-  margin-top: 1px;
+  margin-top: 2px;
   color: var(--muted);
   font-size: 10px;
+}
+
+/* No RSVP público, Vai / Não vai é uma decisão principal.
+   Os botões precisam ter área de toque e hierarquia visual maiores. */
+.public-person .member-attendance {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.public-person .member-attendance button {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* Ações para incluir acompanhantes no RSVP público. */
+.public-card .members-editor > .actions {
+  margin-top: 12px;
+  gap: 8px;
+}
+
+.public-card .members-editor > .actions .btn {
+  min-height: 40px;
+  padding: 9px 12px;
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 
@@ -3194,6 +3226,35 @@ input[type="range"] {
 
   .choice {
     grid-template-columns: 1fr;
+  }
+
+  /* No celular, cada pessoa fica acima das decisões.
+     Evita Vai / Não vai espremidos no canto. */
+  .public-person {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 13px 0;
+  }
+
+  .public-person .member-attendance {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .public-person .member-attendance button {
+    min-height: 44px;
+    font-size: 12px;
+  }
+
+  .public-card .members-editor > .actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .public-card .members-editor > .actions .btn {
+    width: 100%;
+    min-height: 43px;
   }
 
   .member-editor-row {
