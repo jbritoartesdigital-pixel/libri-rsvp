@@ -56,23 +56,23 @@ const DEFAULT_APPEARANCE = {
 };
 
 const DEFAULT_PUBLIC_TEXTS = {
-  eyebrow: "ConfirmaÃ§Ã£o de presenÃ§a",
-  intro: "Confirme sua presenÃ§a para que tudo seja preparado com carinho.",
+  eyebrow: "Confirmação de presença",
+  intro: "Confirme sua presença para que tudo seja preparado com carinho.",
   lookup_label: "Digite seu nome",
   lookup_placeholder: "Comece a digitar seu nome",
   yes_button: "Sim, estarei presente!",
-  no_button: "NÃ£o poderei comparecer",
-  message_label: "Deixe uma mensagem carinhosa ðŸ’Œ",
-  message_placeholder: "Uma mensagem especial para quem estÃ¡ celebrando...",
-  success_title: "PresenÃ§a confirmada!",
-  success_message: "Que bom ter vocÃª com a gente. ðŸ’›",
+  no_button: "Não poderei comparecer",
+  message_label: "Deixe uma mensagem carinhosa 💌",
+  message_placeholder: "Uma mensagem especial para quem está celebrando...",
+  success_title: "Presença confirmada!",
+  success_message: "Que bom ter você com a gente. 💛",
   decline_title: "Resposta registrada",
   decline_message: "Obrigada por avisar.",
-  decline_hint: "Tudo bem ðŸ’› Se quiser, vocÃª ainda pode deixar uma mensagem carinhosa abaixo.",
+  decline_hint: "Tudo bem 💛 Se quiser, você ainda pode deixar uma mensagem carinhosa abaixo.",
   name_label: "Seu nome",
-  calendar_button: "Adicionar Ã  agenda",
+  calendar_button: "Adicionar à agenda",
   back_button: "Voltar ao convite",
-  closed_title: "ConfirmaÃ§Ãµes encerradas",
+  closed_title: "Confirmações encerradas",
 };
 
 const DEFAULT_PUBLIC_TEXTS_EN = {
@@ -82,13 +82,13 @@ const DEFAULT_PUBLIC_TEXTS_EN = {
   lookup_placeholder: "Start typing your name",
   yes_button: "Yes, I'll be there!",
   no_button: "I won't be able to attend",
-  message_label: "Leave a sweet message ðŸ’Œ",
+  message_label: "Leave a sweet message 💌",
   message_placeholder: "A special message for the celebration...",
   success_title: "Attendance confirmed!",
-  success_message: "We're so happy you'll be there. ðŸ’›",
+  success_message: "We're so happy you'll be there. 💛",
   decline_title: "Response received",
   decline_message: "Thank you for letting us know.",
-  decline_hint: "That's okay ðŸ’› If you'd like, you can still leave a message below.",
+  decline_hint: "That's okay 💛 If you'd like, you can still leave a message below.",
   name_label: "Your name",
   calendar_button: "Add to calendar",
   back_button: "Back to invitation",
@@ -139,7 +139,7 @@ async function handleApi(request, env, url) {
 
     if (!env.ADMIN_PASSWORD || !env.SESSION_SECRET) {
       return json(
-        { error: "ADMIN_PASSWORD e SESSION_SECRET nÃ£o estÃ£o configurados." },
+        { error: "ADMIN_PASSWORD e SESSION_SECRET não estão configurados." },
         500
       );
     }
@@ -166,7 +166,7 @@ async function handleApi(request, env, url) {
 
   if (path === "/api/admin/me" && method === "GET") {
     if (!(await isAdmin(request, env))) {
-      return json({ error: "NÃ£o autorizado." }, 401);
+      return json({ error: "Não autorizado." }, 401);
     }
 
     return json({ ok: true });
@@ -174,7 +174,7 @@ async function handleApi(request, env, url) {
 
   if (path.startsWith("/api/admin/")) {
     if (!(await isAdmin(request, env))) {
-      return json({ error: "SessÃ£o expirada. Entre novamente." }, 401);
+      return json({ error: "Sessão expirada. Entre novamente." }, 401);
     }
   }
 
@@ -214,7 +214,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const origin = new URL(request.url).origin;
@@ -234,7 +234,7 @@ async function handleApi(request, env, url) {
     const current = await getEvent(env, eventId);
 
     if (!current) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const body = await bodyJson(request);
@@ -257,7 +257,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     if (event.archived_at) {
@@ -294,7 +294,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     if (!event.archived_at) {
@@ -325,7 +325,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     await env.DB.prepare(`
@@ -354,7 +354,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const token = randomToken();
@@ -387,7 +387,7 @@ async function handleApi(request, env, url) {
     const current = await getEvent(env, eventId);
 
     if (!current) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const duplicated = await duplicateEvent(env, current);
@@ -412,7 +412,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const limit = integerBetween(url.searchParams.get("limit") || 100, 1, 300);
@@ -437,7 +437,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     return json({ guests: await listDeletedGuests(env, eventId) });
@@ -454,7 +454,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     return json({ media: await listEventMedia(env, eventId) });
@@ -465,7 +465,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const media = await uploadEventMedia(request, env, event);
@@ -490,7 +490,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const media = await deleteEventMedia(env, event, mediaId);
@@ -519,7 +519,7 @@ async function handleApi(request, env, url) {
     const guest = await getDeletedGuestRow(env, eventId, guestId);
 
     if (!guest) {
-      return json({ error: "Convidado excluÃ­do nÃ£o encontrado." }, 404);
+      return json({ error: "Convidado excluído não encontrado." }, 404);
     }
 
     await restoreGuest(env, eventId, guestId);
@@ -542,7 +542,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const body = await bodyJson(request);
@@ -565,7 +565,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const [guests, counts] = await Promise.all([
@@ -581,7 +581,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const body = await bodyJson(request);
@@ -608,13 +608,13 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const existing = await getGuest(env, eventId, guestId);
 
     if (!existing) {
-      return json({ error: "Convidado nÃ£o encontrado." }, 404);
+      return json({ error: "Convidado não encontrado." }, 404);
     }
 
     const body = await bodyJson(request);
@@ -648,7 +648,7 @@ async function handleApi(request, env, url) {
     const guest = await getGuest(env, eventId, guestId);
 
     if (!guest) {
-      return json({ error: "Convidado nÃ£o encontrado." }, 404);
+      return json({ error: "Convidado não encontrado." }, 404);
     }
 
     await softDeleteGuest(env, eventId, guestId);
@@ -671,7 +671,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     return json({ messages: await listLoveMessages(env, eventId, url) });
@@ -684,7 +684,7 @@ async function handleApi(request, env, url) {
     const event = await getEvent(env, eventId);
 
     if (!event) {
-      return json({ error: "Evento nÃ£o encontrado." }, 404);
+      return json({ error: "Evento não encontrado." }, 404);
     }
 
     const language = normalizeAppearance(safeJson(event.appearance_settings, {})).interface_language;
@@ -706,7 +706,7 @@ async function handleApi(request, env, url) {
     const event = await getEventByClientToken(env, token);
 
     if (!event) {
-      return json({ error: "Este link nÃ£o Ã© vÃ¡lido ou foi substituÃ­do." }, 404);
+      return json({ error: "Este link não é válido ou foi substituído." }, 404);
     }
 
     return json({
@@ -720,7 +720,7 @@ async function handleApi(request, env, url) {
     const current = await getEventByClientToken(env, token);
 
     if (!current) {
-      return json({ error: "Acesso invÃ¡lido." }, 404);
+      return json({ error: "Acesso inválido." }, 404);
     }
 
     const body = await bodyJson(request);
@@ -747,7 +747,7 @@ async function handleApi(request, env, url) {
     const event = await getEventByClientToken(env, token);
 
     if (!event) {
-      return json({ error: "Acesso invÃ¡lido." }, 404);
+      return json({ error: "Acesso inválido." }, 404);
     }
 
     return json({ media: await listEventMedia(env, event.id) });
@@ -758,7 +758,7 @@ async function handleApi(request, env, url) {
     const event = await getEventByClientToken(env, token);
 
     if (!event) {
-      return json({ error: "Acesso invÃ¡lido." }, 404);
+      return json({ error: "Acesso inválido." }, 404);
     }
 
     requireClientPermission(event, "manage_appearance");
@@ -782,7 +782,7 @@ async function handleApi(request, env, url) {
     const event = await getEventByClientToken(env, token);
 
     if (!event) {
-      return json({ error: "Acesso invÃ¡lido." }, 404);
+      return json({ error: "Acesso inválido." }, 404);
     }
 
     requireClientPermission(event, "manage_appearance");
@@ -809,7 +809,7 @@ async function handleApi(request, env, url) {
     const event = await getEventByClientToken(env, token);
 
     if (!event) {
-      return json({ error: "Acesso invÃ¡lido." }, 404);
+      return json({ error: "Acesso inválido." }, 404);
     }
 
     requireClientPermission(event, "manage_guests");
@@ -833,7 +833,7 @@ async function handleApi(request, env, url) {
     const event = await getEventByClientToken(env, token);
 
     if (!event) {
-      return json({ error: "Acesso invÃ¡lido." }, 404);
+      return json({ error: "Acesso inválido." }, 404);
     }
 
     const [guests, counts] = await Promise.all([
@@ -849,7 +849,7 @@ async function handleApi(request, env, url) {
     const event = await getEventByClientToken(env, token);
 
     if (!event) {
-      return json({ error: "Acesso invÃ¡lido." }, 404);
+      return json({ error: "Acesso inválido." }, 404);
     }
 
     requireClientPermission(event, "manage_guests");
@@ -877,14 +877,14 @@ async function handleApi(request, env, url) {
     const event = await getEventByClientToken(env, token);
 
     if (!event) {
-      return json({ error: "Acesso invÃ¡lido." }, 404);
+      return json({ error: "Acesso inválido." }, 404);
     }
 
     requireClientPermission(event, "manage_guests");
     const existing = await getGuest(env, event.id, guestId);
 
     if (!existing) {
-      return json({ error: "Convidado nÃ£o encontrado." }, 404);
+      return json({ error: "Convidado não encontrado." }, 404);
     }
 
     const body = await bodyJson(request);
@@ -918,14 +918,14 @@ async function handleApi(request, env, url) {
     const event = await getEventByClientToken(env, token);
 
     if (!event) {
-      return json({ error: "Acesso invÃ¡lido." }, 404);
+      return json({ error: "Acesso inválido." }, 404);
     }
 
     requireClientPermission(event, "manage_guests");
     const guest = await getGuest(env, event.id, guestId);
 
     if (!guest) {
-      return json({ error: "Convidado nÃ£o encontrado." }, 404);
+      return json({ error: "Convidado não encontrado." }, 404);
     }
 
     await softDeleteGuest(env, event.id, guestId);
@@ -948,7 +948,7 @@ async function handleApi(request, env, url) {
     const event = await getEventByClientToken(env, token);
 
     if (!event) {
-      return json({ error: "Acesso invÃ¡lido." }, 404);
+      return json({ error: "Acesso inválido." }, 404);
     }
 
     requireClientPermission(event, "view_messages");
@@ -962,7 +962,7 @@ async function handleApi(request, env, url) {
     const event = await getEventByClientToken(env, token);
 
     if (!event) {
-      return json({ error: "Acesso invÃ¡lido." }, 404);
+      return json({ error: "Acesso inválido." }, 404);
     }
 
     requireClientPermission(event, "export_guests");
@@ -986,7 +986,7 @@ async function handleApi(request, env, url) {
     const event = await getEventBySlug(env, slug);
 
     if (!event) {
-      return json({ error: "Esta confirmaÃ§Ã£o nÃ£o estÃ¡ disponÃ­vel." }, 404);
+      return json({ error: "Esta confirmação não está disponível." }, 404);
     }
 
     return json({ event: publicEvent(event) });
@@ -999,7 +999,7 @@ async function handleApi(request, env, url) {
     const event = await getEventBySlug(env, slug);
 
     if (!event) {
-      return json({ error: "Evento indisponÃ­vel." }, 404);
+      return json({ error: "Evento indisponível." }, 404);
     }
 
     const availability = getRsvpAvailability(event);
@@ -1028,7 +1028,7 @@ async function handleApi(request, env, url) {
     const event = await getEventBySlug(env, slug);
 
     if (!event) {
-      return json({ error: "Evento indisponÃ­vel." }, 404);
+      return json({ error: "Evento indisponível." }, 404);
     }
 
     const availability = getRsvpAvailability(event);
@@ -1038,7 +1038,7 @@ async function handleApi(request, env, url) {
     }
 
     if (event.rsvp_mode !== "list") {
-      return json({ error: "Este evento nÃ£o utiliza lista prÃ©-cadastrada." }, 400);
+      return json({ error: "Este evento não utiliza lista pré-cadastrada." }, 400);
     }
 
     const body = await bodyJson(request);
@@ -1084,7 +1084,7 @@ async function handleApi(request, env, url) {
       return json(
         {
           error:
-            "NÃ£o encontramos esse nome na lista. Confira a escrita ou fale com o anfitriÃ£o.",
+            "Não encontramos esse nome na lista. Confira a escrita ou fale com o anfitrião.",
         },
         404
       );
@@ -1101,7 +1101,7 @@ async function handleApi(request, env, url) {
     const event = await getEventBySlug(env, slug);
 
     if (!event) {
-      return json({ error: "Evento indisponÃ­vel." }, 404);
+      return json({ error: "Evento indisponível." }, 404);
     }
 
     const availability = getRsvpAvailability(event);
@@ -1146,7 +1146,7 @@ async function handleApi(request, env, url) {
     return json({ ok: true, guest: publicGuest(guest, event) });
   }
 
-  return json({ error: "Rota nÃ£o encontrada." }, 404);
+  return json({ error: "Rota não encontrada." }, 404);
 }
 
 // =========================================================
@@ -1349,7 +1349,7 @@ async function updateEventFromClient(env, current, body) {
 
   if (body.appearance_settings !== undefined || body.background_type !== undefined) {
     if (!permissions.manage_appearance) {
-      throw new HttpError(403, "A personalizaÃ§Ã£o visual estÃ¡ bloqueada para este evento.");
+      throw new HttpError(403, "A personalização visual está bloqueada para este evento.");
     }
 
     if (body.appearance_settings !== undefined) {
@@ -1363,7 +1363,7 @@ async function updateEventFromClient(env, current, body) {
 
   if (body.public_texts !== undefined) {
     if (!permissions.manage_texts) {
-      throw new HttpError(403, "A ediÃ§Ã£o dos textos estÃ¡ bloqueada para este evento.");
+      throw new HttpError(403, "A edição dos textos está bloqueada para este evento.");
     }
 
     patch.public_texts = body.public_texts;
@@ -1379,7 +1379,7 @@ async function updateEventFromClient(env, current, body) {
 
   if (wantsDetails) {
     if (!permissions.manage_event_details) {
-      throw new HttpError(403, "A ediÃ§Ã£o dos dados do evento estÃ¡ bloqueada.");
+      throw new HttpError(403, "A edição dos dados do evento está bloqueada.");
     }
 
     for (const key of detailKeys) {
@@ -1397,7 +1397,7 @@ async function updateEventFromClient(env, current, body) {
 }
 
 async function duplicateEvent(env, current) {
-  const copyTitle = `${current.title} â€¢ cÃ³pia`;
+  const copyTitle = `${current.title} • cópia`;
 
   return createEvent(env, {
     title: copyTitle,
@@ -1497,7 +1497,6 @@ async function getEventsWithSummary(env, archived = false) {
     children_confirmed: Number(row.children_confirmed || 0),
   }));
 }
-
 async function getEvent(env, id) {
   return env.DB.prepare(`
     SELECT * FROM events WHERE id = ? LIMIT 1
@@ -1566,21 +1565,21 @@ function getRsvpAvailability(event) {
   if (event.archived_at) {
     return {
       accepting: false,
-      reason: "As confirmaÃ§Ãµes deste evento estÃ£o encerradas.",
+      reason: "As confirmações deste evento estão encerradas.",
     };
   }
 
   if (event.status !== "active") {
     return {
       accepting: false,
-      reason: "As confirmaÃ§Ãµes estÃ£o temporariamente pausadas.",
+      reason: "As confirmações estão temporariamente pausadas.",
     };
   }
 
   if (event.rsvp_deadline && hasDeadlinePassed(event.rsvp_deadline)) {
     return {
       accepting: false,
-      reason: "O prazo para confirmaÃ§Ã£o de presenÃ§a foi encerrado.",
+      reason: "O prazo para confirmação de presença foi encerrado.",
     };
   }
 
@@ -1610,7 +1609,7 @@ async function uploadEventMedia(request, env, event) {
   const contentType = request.headers.get("content-type") || "";
 
   if (!contentType.toLowerCase().includes("multipart/form-data")) {
-    throw new HttpError(400, "Envie a mÃ­dia pelo campo de upload.");
+    throw new HttpError(400, "Envie a mídia pelo campo de upload.");
   }
 
   const form = await request.formData();
@@ -1697,7 +1696,7 @@ async function deleteEventMedia(env, event, mediaId) {
     .first();
 
   if (!media) {
-    throw new HttpError(404, "MÃ­dia nÃ£o encontrada.");
+    throw new HttpError(404, "Mídia não encontrada.");
   }
 
   await env.MEDIA.delete(media.object_key);
@@ -1808,7 +1807,7 @@ async function removeMediaFromEvent(env, event, media) {
 
 function ensureMediaBinding(env) {
   if (!env.MEDIA) {
-    throw new HttpError(500, "O armazenamento de mÃ­dia ainda nÃ£o estÃ¡ conectado ao Worker.");
+    throw new HttpError(500, "O armazenamento de mídia ainda não está conectado ao Worker.");
   }
 }
 
@@ -1816,7 +1815,7 @@ function normalizeMediaKind(value) {
   const kind = String(value || "").trim();
 
   if (!MEDIA_KINDS.has(kind)) {
-    throw new HttpError(400, "Tipo de mÃ­dia invÃ¡lido.");
+    throw new HttpError(400, "Tipo de mídia inválido.");
   }
 
   return kind;
@@ -1824,16 +1823,16 @@ function normalizeMediaKind(value) {
 
 function validateMediaFile(file, kind) {
   if (!file.size) {
-    throw new HttpError(400, "O arquivo estÃ¡ vazio.");
+    throw new HttpError(400, "O arquivo está vazio.");
   }
 
   if (kind === "background_video") {
     if (!VIDEO_MIME_TYPES.has(file.type)) {
-      throw new HttpError(400, "Use vÃ­deo MP4 ou WebM para o fundo.");
+      throw new HttpError(400, "Use vídeo MP4 ou WebM para o fundo.");
     }
 
     if (file.size > MAX_VIDEO_BYTES) {
-      throw new HttpError(400, "O vÃ­deo de fundo pode ter no mÃ¡ximo 20 MB.");
+      throw new HttpError(400, "O vídeo de fundo pode ter no máximo 20 MB.");
     }
 
     return;
@@ -1845,18 +1844,18 @@ function validateMediaFile(file, kind) {
     }
 
     if (file.size > MAX_IMAGE_BYTES) {
-      throw new HttpError(400, "A imagem pode ter no mÃ¡ximo 10 MB.");
+      throw new HttpError(400, "A imagem pode ter no máximo 10 MB.");
     }
 
     return;
   }
 
   if (!IMAGE_MIME_TYPES.has(file.type) && !VIDEO_MIME_TYPES.has(file.type)) {
-    throw new HttpError(400, "Formato de arquivo nÃ£o permitido.");
+    throw new HttpError(400, "Formato de arquivo não permitido.");
   }
 
   if (file.size > MAX_VIDEO_BYTES) {
-    throw new HttpError(400, "O arquivo pode ter no mÃ¡ximo 20 MB.");
+    throw new HttpError(400, "O arquivo pode ter no máximo 20 MB.");
   }
 }
 
@@ -2031,11 +2030,11 @@ async function createGuest(env, event, body, source) {
   const primaryName = String(body.primary_name || "").trim();
 
   if (!primaryName) {
-    throw new HttpError(400, "Informe o nome do responsÃ¡vel pela confirmaÃ§Ã£o.");
+    throw new HttpError(400, "Informe o nome do responsável pela confirmação.");
   }
 
   if (primaryName.length > 150) {
-    throw new HttpError(400, "O nome informado Ã© muito longo.");
+    throw new HttpError(400, "O nome informado é muito longo.");
   }
 
   const id = crypto.randomUUID();
@@ -2107,11 +2106,11 @@ async function updateGuest(env, event, guestId, body) {
   const primaryName = String(body.primary_name ?? existing.primary_name).trim();
 
   if (!primaryName) {
-    throw new HttpError(400, "Informe o nome do responsÃ¡vel pela confirmaÃ§Ã£o.");
+    throw new HttpError(400, "Informe o nome do responsável pela confirmação.");
   }
 
   if (primaryName.length > 150) {
-    throw new HttpError(400, "O nome informado Ã© muito longo.");
+    throw new HttpError(400, "O nome informado é muito longo.");
   }
 
   const requestedStatus = body.response_status !== undefined
@@ -2304,7 +2303,7 @@ async function bulkCreateGuests(env, event, rows, source) {
   if (rows.length > MAX_BULK_GUESTS) {
     throw new HttpError(
       400,
-      `Importe no mÃ¡ximo ${MAX_BULK_GUESTS} confirmaÃ§Ãµes por vez.`
+      `Importe no máximo ${MAX_BULK_GUESTS} confirmações por vez.`
     );
   }
 
@@ -2397,7 +2396,6 @@ async function hydrateGuests(env, rows, includeDeleted = false) {
       map.get(member.guest_id).push(serializeMember(member));
     }
   }
-
   return rows.map((row) => serializeGuestRow(row, map.get(row.id) || []));
 }
 
@@ -2584,7 +2582,7 @@ async function submitListRsvp(env, event, body) {
   const existing = await getGuest(env, event.id, String(body.guest_id));
 
   if (!existing) {
-    throw new HttpError(404, "Convidado nÃ£o encontrado neste evento.");
+    throw new HttpError(404, "Convidado não encontrado neste evento.");
   }
 
   const listBehavior = normalizeListBehavior(event.list_behavior);
@@ -2615,7 +2613,7 @@ async function submitListRsvp(env, event, body) {
       if (member.is_preapproved || listBehavior === "strict") {
         throw new HttpError(
           400,
-          "Pessoas prÃ©-cadastradas nÃ£o podem ser removidas pelo convite."
+          "Pessoas pré-cadastradas não podem ser removidas pelo convite."
         );
       }
 
@@ -2643,7 +2641,7 @@ async function submitListRsvp(env, event, body) {
   ) {
     throw new HttpError(
       400,
-      "Este convite permite confirmar apenas as pessoas jÃ¡ cadastradas."
+      "Este convite permite confirmar apenas as pessoas já cadastradas."
     );
   }
 
@@ -2657,7 +2655,7 @@ async function submitListRsvp(env, event, body) {
     if (localNames.has(normalized)) {
       throw new HttpError(
         400,
-        `${member.name} jÃ¡ estÃ¡ nesta confirmaÃ§Ã£o.`
+        `${member.name} já está nesta confirmação.`
       );
     }
 
@@ -2675,7 +2673,7 @@ async function submitListRsvp(env, event, body) {
     if (duplicates.length) {
       throw new HttpError(
         400,
-        `${duplicates[0].name} jÃ¡ consta em outra confirmaÃ§Ã£o deste evento.`
+        `${duplicates[0].name} já consta em outra confirmação deste evento.`
       );
     }
   }
@@ -2689,7 +2687,7 @@ async function submitListRsvp(env, event, body) {
   if (listBehavior === "flexible" && limit && confirmedCount > limit) {
     throw new HttpError(
       400,
-      `Esta confirmaÃ§Ã£o permite no mÃ¡ximo ${limit} pessoa(s) presentes.`
+      `Esta confirmação permite no máximo ${limit} pessoa(s) presentes.`
     );
   }
 
@@ -2838,7 +2836,7 @@ async function submitFreeRsvp(env, event, body) {
     members = normalizePublicFreeMembers(body.members);
 
     if (!members.length) {
-      throw new HttpError(400, "Informe pelo menos uma pessoa que irÃ¡ Ã  festa.");
+      throw new HttpError(400, "Informe pelo menos uma pessoa que irá à festa.");
     }
 
     const limit = Number(event.max_people_per_rsvp || 0) || null;
@@ -2846,7 +2844,7 @@ async function submitFreeRsvp(env, event, body) {
     if (limit && members.length > limit) {
       throw new HttpError(
         400,
-        `Esta confirmaÃ§Ã£o permite no mÃ¡ximo ${limit} pessoa(s).`
+        `Esta confirmação permite no máximo ${limit} pessoa(s).`
       );
     }
   } else {
@@ -3033,7 +3031,7 @@ function csvResponse(guests, filename, language = "pt-BR") {
   const rows = [
     en
       ? ["Primary contact","Family / group","Status","Confirmed people","Adults","Children","Limit","Phone","Dietary restrictions","Notes","Sweet message","Source","Responded at"]
-      : ["ResponsÃ¡vel","FamÃ­lia / grupo","Status","Pessoas confirmadas","Adultos","CrianÃ§as","Limite","Telefone","RestriÃ§Ã£o alimentar","ObservaÃ§Ãµes","Mensagem carinhosa","Origem","Respondido em"],
+      : ["Responsável","Família / grupo","Status","Pessoas confirmadas","Adultos","Crianças","Limite","Telefone","Restrição alimentar","Observações","Mensagem carinhosa","Origem","Respondido em"],
   ];
 
   for (const guest of guests) {
@@ -3086,14 +3084,14 @@ function csvCell(value) {
 function attendanceLabel(value, language = "pt-BR") {
   const en = language === "en";
   if (value === "yes") return en ? "attending" : "vai";
-  if (value === "no") return en ? "not attending" : "nÃ£o vai";
+  if (value === "no") return en ? "not attending" : "não vai";
   return en ? "pending" : "aguardando";
 }
 
 function statusLabelText(value, language = "pt-BR") {
   const en = language === "en";
   if (value === "yes") return en ? "Confirmed" : "Confirmado";
-  if (value === "no") return en ? "Not attending" : "NÃ£o irÃ¡";
+  if (value === "no") return en ? "Not attending" : "Não irá";
   return en ? "Pending" : "Pendente";
 }
 
@@ -3363,7 +3361,7 @@ function allowedPublicResponse(value) {
   const status = String(value || "").toLowerCase();
 
   if (!['yes', 'no'].includes(status)) {
-    throw new HttpError(400, "Escolha se poderÃ¡ comparecer.");
+    throw new HttpError(400, "Escolha se poderá comparecer.");
   }
 
   return status;
@@ -3382,7 +3380,7 @@ function requireClientPermission(event, key) {
   const permissions = normalizeClientPermissions(safeJson(event.client_permissions, {}));
 
   if (!permissions[key]) {
-    throw new HttpError(403, "Esta funÃ§Ã£o estÃ¡ bloqueada para o painel da cliente.");
+    throw new HttpError(403, "Esta função está bloqueada para o painel da cliente.");
   }
 }
 
@@ -3474,11 +3472,11 @@ function normalizeOptionalUrl(value) {
   try {
     url = new URL(text);
   } catch {
-    throw new HttpError(400, "A URL informada nÃ£o Ã© vÃ¡lida.");
+    throw new HttpError(400, "A URL informada não é válida.");
   }
 
   if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new HttpError(400, "A mÃ­dia precisa usar um endereÃ§o http ou https.");
+    throw new HttpError(400, "A mídia precisa usar um endereço http ou https.");
   }
 
   return url.toString();
@@ -3674,7 +3672,7 @@ function withRsvpFramePolicy(response, request) {
 
 async function serveApp(request, env) {
   if (!env.ASSETS) {
-    return new Response("Static Assets nÃ£o configurado.", { status: 500 });
+    return new Response("Static Assets não configurado.", { status: 500 });
   }
 
   const response = await env.ASSETS.fetch(request);
