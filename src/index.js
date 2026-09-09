@@ -348,7 +348,6 @@ async function handleApi(request, env, url) {
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/client-link\/reset$/
   );
-
   if (match && method === "POST") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
@@ -698,7 +697,6 @@ async function handleApi(request, env, url) {
   // =======================================================
   // CLIENT EVENT
   // =======================================================
-
   match = path.match(/^\/api\/client\/([^/]+)\/event$/);
 
   if (match && method === "GET") {
@@ -1047,8 +1045,7 @@ async function handleApi(request, env, url) {
     if (body.guest_id) {
       guestRow = await env.DB.prepare(`
         SELECT *
-        FROM guests
-        WHERE id = ? AND event_id = ? AND deleted_at IS NULL
+        FROM guests        WHERE id = ? AND event_id = ? AND deleted_at IS NULL
         LIMIT 1
       `)
         .bind(String(body.guest_id), event.id)
@@ -1398,7 +1395,6 @@ async function updateEventFromClient(env, current, body) {
 
 async function duplicateEvent(env, current) {
   const copyTitle = `${current.title} • cópia`;
-
   return createEvent(env, {
     title: copyTitle,
     event_date: current.event_date,
@@ -1747,8 +1743,7 @@ async function applyMediaToEvent(env, event, kind, publicUrl) {
 
     await env.DB.prepare(`
       UPDATE events
-      SET appearance_settings = ?, updated_at = ?
-      WHERE id = ?
+      SET appearance_settings = ?, updated_at = ?      WHERE id = ?
     `)
       .bind(JSON.stringify(appearance), now(), event.id)
       .run();
@@ -2042,7 +2037,15 @@ async function createGuest(env, event, body, source) {
   const status = deriveGroupStatus(members, allowedStatus(body.response_status));
   const createdAt = now();
   const groupLabel = cleanOptionalText(body.group_label, 150);
-  const maxPeopleAllowed = normalizeOptionalInteger(body.max_people_allowed, 1, 100);
+  let maxPeopleAllowed = normalizeOptionalInteger(body.max_people_allowed, 1, 100);
+  const maxAdultsAllowed = normalizeOptionalInteger(body.max_adults_allowed, 0, 100);
+  const maxChildrenAllowed = normalizeOptionalInteger(body.max_children_allowed, 0, 100);
+
+  maxPeopleAllowed = validateGuestTypeLimits({
+    maxPeopleAllowed,
+    maxAdultsAllowed,
+    maxChildrenAllowed,
+  });
 
   await env.DB.prepare(`
     INSERT INTO guests (
@@ -2062,13 +2065,15 @@ async function createGuest(env, event, body, source) {
       group_label,
       normalized_group_label,
       max_people_allowed,
+      max_adults_allowed,
+      max_children_allowed,
       responded_at,
       created_at,
       updated_at,
       deleted_at
     )
     VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL
     )
   `)
     .bind(
@@ -2088,6 +2093,8 @@ async function createGuest(env, event, body, source) {
       groupLabel,
       normalizeName(groupLabel || ""),
       maxPeopleAllowed,
+      maxAdultsAllowed,
+      maxChildrenAllowed,
       status === "pending" ? null : createdAt,
       createdAt,
       createdAt
@@ -2097,7 +2104,6 @@ async function createGuest(env, event, body, source) {
   await syncManagedGuestMembers(env, event.id, id, members, []);
   return getGuest(env, event.id, id);
 }
-
 async function updateGuest(env, event, guestId, body) {
   const existing = await getGuest(env, event.id, guestId);
 
@@ -2135,9 +2141,23 @@ async function updateGuest(env, event, guestId, body) {
     ? cleanOptionalText(body.group_label, 150)
     : existing.group_label || null;
 
-  const maxPeopleAllowed = body.max_people_allowed !== undefined
+  let maxPeopleAllowed = body.max_people_allowed !== undefined
     ? normalizeOptionalInteger(body.max_people_allowed, 1, 100)
     : existing.max_people_allowed;
+
+  const maxAdultsAllowed = body.max_adults_allowed !== undefined
+    ? normalizeOptionalInteger(body.max_adults_allowed, 0, 100)
+    : existing.max_adults_allowed;
+
+  const maxChildrenAllowed = body.max_children_allowed !== undefined
+    ? normalizeOptionalInteger(body.max_children_allowed, 0, 100)
+    : existing.max_children_allowed;
+
+  maxPeopleAllowed = validateGuestTypeLimits({
+    maxPeopleAllowed,
+    maxAdultsAllowed,
+    maxChildrenAllowed,
+  });
 
   await env.DB.prepare(`
     UPDATE guests
@@ -2155,6 +2175,8 @@ async function updateGuest(env, event, guestId, body) {
       group_label = ?,
       normalized_group_label = ?,
       max_people_allowed = ?,
+      max_adults_allowed = ?,
+      max_children_allowed = ?,
       responded_at = ?,
       updated_at = ?
     WHERE id = ? AND event_id = ? AND deleted_at IS NULL
@@ -2185,6 +2207,8 @@ async function updateGuest(env, event, guestId, body) {
       groupLabel,
       normalizeName(groupLabel || ""),
       maxPeopleAllowed,
+      maxAdultsAllowed,
+      maxChildrenAllowed,
       status === "pending" ? existing.responded_at || null : existing.responded_at || now(),
       now(),
       guestId,
@@ -2448,7 +2472,6 @@ async function findDuplicateMembers(env, eventId, members, excludeGuestId = null
   }
 
   const result = await env.DB.prepare(sql).bind(...bindings).all();
-
   return result.results.map((row) => ({
     name: row.name,
     guest_id: row.guest_id,
@@ -2547,6 +2570,8 @@ function publicGuest(guest, event) {
     group_label: guest.group_label,
     response_status: guest.response_status,
     max_people_allowed: guest.max_people_allowed,
+    max_adults_allowed: guest.max_adults_allowed,
+    max_children_allowed: guest.max_children_allowed,
     effective_limit: effectiveGuestLimit(event, guest),
     list_behavior: normalizeListBehavior(event.list_behavior),
     members: guest.members.map((member) => ({
@@ -2680,9 +2705,34 @@ async function submitListRsvp(env, event, body) {
 
   const projectedMembers = [...projectedExisting, ...newMembers];
   const limit = effectiveGuestLimit(event, existing);
-  const confirmedCount = projectedMembers.filter(
+  const typeLimits = guestTypeLimits(existing);
+  const confirmedMembers = projectedMembers.filter(
     (member) => member.attendance_status === "yes"
-  ).length;
+  );
+  const confirmedCount = confirmedMembers.length;
+
+  if (listBehavior === "flexible" && typeLimits.active) {
+    const confirmedAdults = confirmedMembers.filter(
+      (member) => member.person_type === "adult"
+    ).length;
+    const confirmedChildren = confirmedMembers.filter(
+      (member) => member.person_type === "child"
+    ).length;
+
+    if (confirmedAdults > typeLimits.adults) {
+      throw new HttpError(
+        400,
+        `Esta confirmação permite no máximo ${typeLimits.adults} adulto(s).`
+      );
+    }
+
+    if (confirmedChildren > typeLimits.children) {
+      throw new HttpError(
+        400,
+        `Esta confirmação permite no máximo ${typeLimits.children} criança(s).`
+      );
+    }
+  }
 
   if (listBehavior === "flexible" && limit && confirmedCount > limit) {
     throw new HttpError(
@@ -2797,8 +2847,7 @@ async function submitListRsvp(env, event, body) {
       countMembers(projectedMembers, "child"),
       JSON.stringify(projectedMembers.map((member) => member.name)),
       currentTime,
-      currentTime,
-      existing.id,
+      currentTime,      existing.id,
       event.id
     )
     .run();
@@ -2911,6 +2960,66 @@ function normalizePublicFreeMembers(value) {
     }))
     .filter((item) => item.name)
     .slice(0, 100);
+}
+
+function guestTypeLimits(guest) {
+  const adults =
+    guest?.max_adults_allowed === null ||
+    guest?.max_adults_allowed === undefined ||
+    String(guest.max_adults_allowed).trim() === ""
+      ? null
+      : Number(guest.max_adults_allowed);
+
+  const children =
+    guest?.max_children_allowed === null ||
+    guest?.max_children_allowed === undefined ||
+    String(guest.max_children_allowed).trim() === ""
+      ? null
+      : Number(guest.max_children_allowed);
+
+  const active =
+    Number.isFinite(adults) &&
+    adults >= 0 &&
+    Number.isFinite(children) &&
+    children >= 0;
+
+  return {
+    active,
+    adults: active ? adults : null,
+    children: active ? children : null,
+  };
+}
+
+function validateGuestTypeLimits({
+  maxPeopleAllowed,
+  maxAdultsAllowed,
+  maxChildrenAllowed,
+}) {
+  const hasAdultLimit = maxAdultsAllowed !== null;
+  const hasChildLimit = maxChildrenAllowed !== null;
+
+  if (hasAdultLimit !== hasChildLimit) {
+    throw new HttpError(
+      400,
+      "Informe juntos os limites de adultos e de crianças."
+    );
+  }
+
+  if (!hasAdultLimit) {
+    return maxPeopleAllowed;
+  }
+
+  const total = maxAdultsAllowed + maxChildrenAllowed;
+
+  if (total < 1) {
+    throw new HttpError(
+      400,
+      "A composição da família precisa permitir pelo menos uma pessoa."
+    );
+  }
+
+
+  return total;
 }
 
 function effectiveGuestLimit(event, guest) {
@@ -3030,8 +3139,8 @@ function csvResponse(guests, filename, language = "pt-BR") {
   const en = language === "en";
   const rows = [
     en
-      ? ["Primary contact","Family / group","Status","Confirmed people","Adults","Children","Limit","Phone","Dietary restrictions","Notes","Sweet message","Source","Responded at"]
-      : ["Responsável","Família / grupo","Status","Pessoas confirmadas","Adultos","Crianças","Limite","Telefone","Restrição alimentar","Observações","Mensagem carinhosa","Origem","Respondido em"],
+      ? ["Primary contact","Family / group","Status","Confirmed people","Adults","Children","Total limit","Adult limit","Child limit","Phone","Dietary restrictions","Notes","Sweet message","Source","Responded at"]
+      : ["Responsável","Família / grupo","Status","Pessoas confirmadas","Adultos","Crianças","Limite total","Limite adultos","Limite crianças","Telefone","Restrição alimentar","Observações","Mensagem carinhosa","Origem","Respondido em"],
   ];
 
   for (const guest of guests) {
@@ -3053,6 +3162,8 @@ function csvResponse(guests, filename, language = "pt-BR") {
       adults,
       children,
       guest.max_people_allowed ?? "",
+      guest.max_adults_allowed ?? "",
+      guest.max_children_allowed ?? "",
       guest.phone || "",
       guest.dietary || "",
       guest.notes || "",
@@ -3147,8 +3258,7 @@ function publicEvent(row) {
     event_date: event.event_date,
     event_time: event.event_time,
     rsvp_mode: event.rsvp_mode,
-    welcome_message: event.welcome_message,
-    primary_color: event.primary_color,
+    welcome_message: event.welcome_message,    primary_color: event.primary_color,
     accent_color: event.accent_color,
     background_image_url: event.background_image_url,
     background_video_url: event.background_video_url,
@@ -3194,6 +3304,14 @@ function serializeGuestRow(row, members) {
       row.max_people_allowed === null || row.max_people_allowed === undefined
         ? null
         : Number(row.max_people_allowed),
+    max_adults_allowed:
+      row.max_adults_allowed === null || row.max_adults_allowed === undefined
+        ? null
+        : Number(row.max_adults_allowed),
+    max_children_allowed:
+      row.max_children_allowed === null || row.max_children_allowed === undefined
+        ? null
+        : Number(row.max_children_allowed),
     responded_at: row.responded_at || null,
     source: row.source || "",
     created_at: row.created_at,
@@ -3497,8 +3615,7 @@ function safeOptionalStoredUrl(value) {
 
 function cleanOptionalText(value, maxLength) {
   if (value === undefined || value === null) return null;
-  const text = String(value).trim();
-  return text ? text.slice(0, maxLength) : null;
+  const text = String(value).trim();  return text ? text.slice(0, maxLength) : null;
 }
 
 function cleanNullable(value) {
