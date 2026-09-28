@@ -14,14 +14,6 @@ jobs:
       - name: Baixar projeto
         uses: actions/checkout@v6
 
-      - name: Aplicar migrações D1
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: "4"
-          command: d1 migrations apply libri-rsvp-db --remote
-
       - name: Publicar no Cloudflare
         uses: cloudflare/wrangler-action@v4
         with:
