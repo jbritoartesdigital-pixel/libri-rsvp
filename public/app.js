@@ -1,10 +1,12 @@
 const app=document.querySelector("#app"),toastEl=document.querySelector("#toast"),path=location.pathname;
 let toastTimer,suggestTimer,appearanceDirty=false,activeInterfaceLanguage="pt-BR";
 
+
 const DEFAULT_APPEARANCE={background_color:"#f8efec",card_color:"#fffaf7",text_color:"#4f2d2a",muted_color:"#866e68",button_color:"#b8735f",button_text_color:"#ffffff",overlay_color:"#3a1f1b",overlay_opacity:.18,card_opacity:.94,card_blur:12,card_radius:28,font_style:"elegant",card_style:"glass",background_position:"center",background_x:"center",card_width:"medium",interface_language:"pt-BR",invitation_url:"",calendar_location:"",calendar_end_time:"",cover_url:"",logo_url:""};
 const DEFAULT_TEXTS={eyebrow:"Confirmação de presença",intro:"Confirme sua presença para que tudo seja preparado com carinho.",lookup_label:"Digite seu nome",lookup_placeholder:"Comece a digitar seu nome",yes_button:"Sim, estarei presente!",no_button:"Não poderei comparecer",message_label:"Deixe uma mensagem carinhosa 💌",message_placeholder:"Uma mensagem especial para quem está celebrando...",success_title:"Presença confirmada!",success_message:"Que bom ter você com a gente. 💛",decline_title:"Resposta registrada",decline_message:"Obrigada por avisar.",decline_hint:"Tudo bem 💛 Se quiser, você ainda pode deixar uma mensagem carinhosa abaixo.",name_label:"Qual é o seu nome?",calendar_button:"Adicionar à agenda",back_button:"Voltar ao convite",closed_title:"Confirmações encerradas"};
 const DEFAULT_TEXTS_EN={eyebrow:"RSVP",intro:"Please confirm your attendance so everything can be prepared with care.",lookup_label:"Enter your name",lookup_placeholder:"Start typing your name",yes_button:"Yes, I'll be there!",no_button:"I won't be able to attend",message_label:"Leave a sweet message 💌",message_placeholder:"A special message for the celebration...",success_title:"Attendance confirmed!",success_message:"We're so happy you'll be there. 💛",decline_title:"Response received",decline_message:"Thank you for letting us know.",decline_hint:"That's okay 💛 If you'd like, you can still leave a message below.",name_label:"What's your name?",calendar_button:"Add to calendar",back_button:"Back to invitation",closed_title:"RSVP closed"};
 const DEFAULT_PERMS={manage_guests:true,manage_appearance:true,manage_texts:true,view_messages:true,export_guests:true,manage_event_details:false};
+
 
 const esc=(v="")=>String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const fmtDate=v=>fmtDateLang(v,"pt-BR");
@@ -22,6 +24,7 @@ const fmtDTLang=(v,lang="pt-BR")=>{if(!v)return"";try{return new Intl.DateTimeFo
 const statusLabel=(s,lang="pt-BR")=>s==="yes"?tr(lang,"Confirmado","Confirmed"):s==="no"?tr(lang,"Não irá","Not attending"):tr(lang,"Aguardando","Pending");
 const attendanceLabel=(s,lang="pt-BR")=>s==="yes"?tr(lang,"Vai","Attending"):s==="no"?tr(lang,"Não vai","Not attending"):tr(lang,"Aguardando","Pending");
 const sourceLabel=(s,lang="pt-BR")=>({admin:"Libri",client:tr(lang,"Cliente","Client"),public:tr(lang,"Convidado","Guest"),import:tr(lang,"Importação","Import")}[s]||s||"—");
+
 
 function translateServerMessage(message,lang=activeInterfaceLanguage){
  if(lang!=="en")return message||"";
@@ -93,9 +96,11 @@ const normalizeHex=v=>{
  return`#${h.toUpperCase()}`;
 };
 
+
 const bgPositionCss=(v,x="center")=>`${x==="left"?"left":x==="right"?"right":"center"} ${v==="top"?"top":v==="bottom"?"bottom":"center"}`;
 const publicCardWidthCss=v=>v==="narrow"?"min(82vw,430px)":v==="wide"?"min(94vw,590px)":"min(88vw,510px)";
 const previewInset=v=>v==="narrow"?24:v==="wide"?8:16;
+
 
 const isRecentResponse=v=>{
  if(!v)return false;
@@ -103,12 +108,20 @@ const isRecentResponse=v=>{
  return Number.isFinite(t)&&Date.now()-t>=0&&Date.now()-t<24*60*60*1000;
 };
 
+
 const duplicateNameKey=value=>String(value||"")
  .normalize("NFD")
  .replace(/[\u0300-\u036f]/g,"")
  .toLowerCase()
  .replace(/[^a-z0-9]+/g," ")
  .trim();
+
+
+const newCreationRequestId=()=>{
+ if(globalThis.crypto?.randomUUID)return globalThis.crypto.randomUUID();
+ return`req_${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+};
+
 
 function markPossibleDuplicateGuests(guests){
  const groups=new Map(),result=(guests||[]).map(guest=>({...guest}));
@@ -121,6 +134,7 @@ function markPossibleDuplicateGuests(guests){
  return result;
 }
 
+
 async function deleteGuestsInSmallBatches(base,ids){
  let deleted=0;
  const failed=[];
@@ -131,6 +145,7 @@ async function deleteGuestsInSmallBatches(base,ids){
  }
  return{deleted,failed};
 }
+
 
 function installBulkGuestStyles(){
  if(document.querySelector("#libriBulkGuestStyles"))return;
@@ -148,7 +163,9 @@ function installBulkGuestStyles(){
  document.head.append(style);
 }
 
+
 installBulkGuestStyles();
+
 
 const dateKeySao=d=>{
  try{
@@ -157,6 +174,7 @@ const dateKeySao=d=>{
   return`${pick("year")}-${pick("month")}-${pick("day")}`;
  }catch{return""}
 };
+
 
 const fmtResponseTime=(v,lang="pt-BR")=>{
  if(!v)return"";
@@ -170,16 +188,19 @@ const fmtResponseTime=(v,lang="pt-BR")=>{
  }catch{return fmtDTLang(v,lang)}
 };
 
+
 function scrollToProblem(el){
  if(!el)return;
  try{el.scrollIntoView({behavior:"smooth",block:"center"})}catch{}
  setTimeout(()=>{if(typeof el.focus==="function")el.focus({preventScroll:true})},260);
 }
 
+
 function bindInvalidScroll(form){
  if(!form)return;
  form.addEventListener("invalid",e=>scrollToProblem(e.target),true);
 }
+
 
 function syncPublicViewport(){
  const apply=()=>{
@@ -190,6 +211,7 @@ function syncPublicViewport(){
  window.visualViewport?.addEventListener("resize",apply,{passive:true});
  window.addEventListener("orientationchange",()=>setTimeout(apply,120),{passive:true});
 }
+
 
 function uploadWithProgress(url,formData,onProgress){
  return new Promise((resolve,reject)=>{
@@ -209,9 +231,11 @@ function uploadWithProgress(url,formData,onProgress){
  });
 }
 
+
 const pad2=n=>String(n).padStart(2,"0");
 const compactDate=v=>String(v||"").replaceAll("-","");
 const compactTime=v=>String(v||"00:00").replace(":","")+"00";
+
 
 function addCalendarHours(date,time,hours=4){
  if(!date)return{date:"",time:""};
@@ -225,14 +249,17 @@ function addCalendarHours(date,time,hours=4){
  };
 }
 
+
 function calendarRange(e,a){
  const date=e.event_date;
  if(!date)return null;
+
 
  if(!e.event_time){
   const next=addCalendarHours(date,"00:00",24);
   return{allDay:true,start:compactDate(date),end:compactDate(next.date)};
  }
+
 
  let endDate=date,endTime=a.calendar_end_time;
  if(endTime){
@@ -247,6 +274,7 @@ function calendarRange(e,a){
   endTime=end.time;
  }
 
+
  return{
   allDay:false,
   start:`${compactDate(date)}T${compactTime(e.event_time)}`,
@@ -254,11 +282,13 @@ function calendarRange(e,a){
  };
 }
 
+
 function calendarDescription(e,a){
  const L=eventLang(e),bits=[tr(L,"Evento adicionado pelo Libri RSVP.","Event added by Libri RSVP.")];
  if(a.invitation_url)bits.push(`${tr(L,"Convite","Invitation")}: ${a.invitation_url}`);
  return bits.join("\n");
 }
+
 
 function googleCalendarUrl(e){
  const a=safeAppearance(e),range=calendarRange(e,a);
@@ -274,6 +304,7 @@ function googleCalendarUrl(e){
  return`https://calendar.google.com/calendar/render?${q.toString()}`;
 }
 
+
 function icsEscape(v=""){
  return String(v)
   .replace(/\\/g,"\\\\")
@@ -282,9 +313,11 @@ function icsEscape(v=""){
   .replace(/;/g,"\\;");
 }
 
+
 function downloadCalendarIcs(e){
  const a=safeAppearance(e),range=calendarRange(e,a);
  if(!range)return toast(tr(eventLang(e),"Este evento ainda não tem data configurada.","This event does not have a date yet."),true);
+
 
  const stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d{3}Z$/,"Z");
  const start=range.allDay
@@ -293,6 +326,7 @@ function downloadCalendarIcs(e){
  const end=range.allDay
   ?`DTEND;VALUE=DATE:${range.end}`
   :`DTEND;TZID=America/Sao_Paulo:${range.end}`;
+
 
  const body=[
   "BEGIN:VCALENDAR",
@@ -312,6 +346,7 @@ function downloadCalendarIcs(e){
   "END:VCALENDAR"
  ].filter(Boolean).join("\r\n");
 
+
  const blob=new Blob([body],{type:"text/calendar;charset=utf-8"});
  const url=URL.createObjectURL(blob);
  const link=document.createElement("a");
@@ -323,9 +358,11 @@ function downloadCalendarIcs(e){
  setTimeout(()=>URL.revokeObjectURL(url),1500);
 }
 
+
 function openCalendarMenu(e){
  const L=eventLang(e),google=googleCalendarUrl(e);
  if(!google)return toast(tr(L,"Este evento ainda não tem data configurada.","This event does not have a date yet."),true);
+
 
  const w=modal(
   tr(L,"Adicionar à agenda","Add to calendar"),
@@ -337,6 +374,7 @@ function openCalendarMenu(e){
  );
  w.querySelector("#calendarIcs").onclick=()=>downloadCalendarIcs(e);
 }
+
 
 function setAppearanceDirty(value=true){
  appearanceDirty=Boolean(value);
@@ -350,6 +388,7 @@ function setAppearanceDirty(value=true){
  }
 }
 
+
 function canLeaveAppearance(){
  if(!appearanceDirty)return true;
  if(confirm(tr(activeInterfaceLanguage,"Você tem alterações de aparência que ainda não foram salvas. Deseja sair mesmo assim?","You have unsaved customization changes. Leave without saving?"))){
@@ -358,6 +397,7 @@ function canLeaveAppearance(){
  }
  return false;
 }
+
 
 async function api(url,options={}){
  const headers={...(options.headers||{})};
@@ -373,12 +413,15 @@ function topbar(extra="",lang=activeInterfaceLanguage){return`<div class="topbar
 function modal(title,html,subtitle="",large=false){const w=document.createElement("div");document.body.classList.add("modal-open");w.className="modal-backdrop";w.innerHTML=`<div class="modal${large?" large":""}"><button class="close" type="button">×</button><h2>${esc(title)}</h2>${subtitle?`<p class="subtle">${esc(subtitle)}</p>`:""}${html}</div>`;document.body.append(w);const close=()=>{w.remove();if(!document.querySelector(".modal-backdrop"))document.body.classList.remove("modal-open")};w.querySelector(".close").onclick=close;w.onclick=e=>{if(e.target===w)close()};w.closeModal=close;return w}
 const loading=(lang=activeInterfaceLanguage)=>`<div class="card panel"><div class="loading-inline"><span class="spinner"></span>${tr(lang,"Carregando...","Loading...")}</div></div>`;
 
+
 if(path==="/admin"||path==="/admin/")adminApp();
 else if(path.startsWith("/cliente/"))clientApp(decodeURIComponent(path.split("/")[2]||""));
 else if(path.startsWith("/e/"))publicApp(decodeURIComponent(path.split("/")[2]||""));
 else home();
 
+
 function home(){brand();app.innerHTML=`<main class="shell">${topbar()}<section class="card hero"><div><span class="chip">LIBRI RSVP</span><h2>Confirmações bonitas por fora e organizadas por dentro.</h2><p>Gestão de convidados, famílias, mensagens e presença.</p></div><a class="btn" href="/admin">Área Libri</a></section></main>`}
+
 
 async function adminApp(){
  brand();
@@ -386,6 +429,7 @@ async function adminApp(){
  try{await api("/api/admin/me");return renderAdminDashboard()}catch{}
  document.querySelector("#login").onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;try{await api("/api/admin/login",{method:"POST",body:JSON.stringify({password:new FormData(e.currentTarget).get("password")})});renderAdminDashboard()}catch(err){toast(err.message,true);b.disabled=false}};
 }
+
 
 async function renderAdminDashboard(archived=false){
  brand();
@@ -407,6 +451,7 @@ function eventCard(e,archived){
  <div class="progress-card" style="padding:14px 0 0"><div class="progress-head"><span class="subtle">Respostas</span><b class="subtle">${pct}%</b></div><div class="progress-track"><div class="progress-bar" style="--progress:${pct}%"></div></div></div>
  <div class="actions" style="margin-top:14px"><button class="btn secondary" data-event="${e.id}">Abrir painel</button>${archived?`<button class="btn secondary" data-unarchive="${e.id}">Restaurar</button>`:""}</div></article>`;
 }
+
 
 function checkbox(name,label,checked){return`<label class="check"><input type="checkbox" name="${name}" ${checked?"checked":""}>${esc(label)}</label>`}
 function eventForm(e=null){
@@ -434,10 +479,12 @@ function eventModal(e=null){
  w.querySelector("#eventForm").onsubmit=async ev=>{ev.preventDefault();const b=ev.submitter;b.disabled=true;try{const r=await api(e?`/api/admin/events/${e.id}`:"/api/admin/events",{method:e?"PATCH":"POST",body:JSON.stringify(eventPayload(ev.currentTarget,e))});w.closeModal();toast(e?"Evento atualizado.":"Evento criado. ✨");renderAdminEvent(r.event.id,e?"settings":"overview")}catch(err){toast(err.message,true);b.disabled=false}};
 }
 
+
 function eventHeader(e,client=false){
  const L=client?eventLang(e):"pt-BR";
  return`<section class="event-head" style="background:linear-gradient(135deg,${esc(e.primary_color||"#b8735f")},${esc(e.accent_color||"#f8efec")})"><div class="eyebrow" style="color:#fff">${client?tr(L,"PAINEL PRIVADO","PRIVATE DASHBOARD"):"PAINEL LIBRI"}</div><h1>${esc(e.title)}</h1><p>${fmtDateLang(e.event_date,L)}${e.event_time?` • ${esc(e.event_time)}`:""} • ${e.rsvp_mode==="list"?tr(L,"Lista fechada","Guest list"):tr(L,"Confirmação livre","Open RSVP")}</p></section>`
 }
+
 
 async function renderAdminEvent(id,tab="overview"){
  const info=await api(`/api/admin/events/${id}`),e=info.event,s=info.summary;brand(e);
@@ -540,6 +587,7 @@ function bindGuestActions(root,ctx){
  root.querySelectorAll("[data-select-guest]").forEach(input=>input.onchange=()=>{input.checked?ctx.selectedIds.add(input.dataset.selectGuest):ctx.selectedIds.delete(input.dataset.selectGuest);input.closest(".guest-card")?.classList.toggle("selected",input.checked);ctx.onSelectionChange?.()})
 }
 function guestModal({event,role,eventId,token,guest=null,onSaved}){
+ const creationRequestId=guest?null:newCreationRequestId();
  const L=role==="client"?eventLang(event):"pt-BR",isList=event.rsvp_mode==="list",isFlexible=isList&&event.list_behavior==="flexible";
  const hasSavedAdultLimit=guest?.max_adults_allowed!==null&&guest?.max_adults_allowed!==undefined&&String(guest.max_adults_allowed)!=="";
  const hasSavedChildLimit=guest?.max_children_allowed!==null&&guest?.max_children_allowed!==undefined&&String(guest.max_children_allowed)!=="";
@@ -595,6 +643,7 @@ function guestModal({event,role,eventId,token,guest=null,onSaved}){
   ev.preventDefault();
   const d=new FormData(form),members=[...root.children].map(r=>({id:r.querySelector(".mid").value||undefined,name:r.querySelector(".mname").value.trim(),person_type:r.querySelector(".mname").dataset.type,attendance_status:r.querySelector(".mstatus").value,is_preapproved:true})).filter(x=>x.name);
   const body={group_label:d.get("group_label"),primary_name:d.get("primary_name"),phone:d.get("phone"),dietary:d.get("dietary"),notes:d.get("notes"),members};
+  if(!guest)body.creation_request_id=creationRequestId;
   if(isFlexible&&mode()==="composition"){
    const a=adultLimit(),c=childLimit();
    if(a===null||c===null){scrollToProblem(adultLimitInput);return toast(tr(L,"Informe o limite de adultos e crianças.","Enter both the adult and child limits."),true)}
@@ -609,14 +658,50 @@ function guestModal({event,role,eventId,token,guest=null,onSaved}){
    if(isFlexible){body.max_adults_allowed=null;body.max_children_allowed=null}
   }
   const base=role==="admin"?`/api/admin/events/${eventId}`:`/api/client/${encodeURIComponent(token)}`;
-  try{await api(guest?`${base}/guests/${guest.id}`:`${base}/guests`,{method:guest?"PATCH":"POST",body:JSON.stringify(body)});w.closeModal();toast(guest?tr(L,"Alterações salvas.","Changes saved."):tr(L,"Convidado cadastrado.","Guest added."));onSaved?.()}catch(e){toast(e.message,true)}
+  const submitButton=ev.submitter||form.querySelector('button[type="submit"],button:not([type])');
+  if(submitButton?.disabled)return;
+  if(submitButton)submitButton.disabled=true;
+  try{
+   await api(guest?`${base}/guests/${guest.id}`:`${base}/guests`,{method:guest?"PATCH":"POST",body:JSON.stringify(body)});
+   w.closeModal();
+   toast(guest?tr(L,"Alterações salvas.","Changes saved."):tr(L,"Convidado cadastrado.","Guest added."));
+   onSaved?.();
+  }catch(e){
+   if(submitButton)submitButton.disabled=false;
+   toast(e.message,true);
+  }
  };
 }
 function bulkModal({event,role,eventId,token,onSaved}){
  const L=role==="client"?eventLang(event):"pt-BR";
+ let requestSignature="",requestIds=[];
  const w=modal(tr(L,"Adicionar vários convidados","Add multiple guests"),`<form id="bf"><div class="notice"><strong>${tr(L,"Um nome por linha.","One name per line.")}</strong>${tr(L,"Cada nome entra como 1 adulto aguardando confirmação. Depois você pode editar e montar as famílias.","Each name is added as one adult with a pending RSVP. You can edit and group families afterward.")}</div><div class="field" style="margin-top:12px"><label>${tr(L,"Lista","List")}</label><textarea name="names" rows="12" required></textarea></div><button class="btn block large">${tr(L,"Cadastrar lista","Add list")}</button></form>`);
- w.querySelector("#bf").onsubmit=async ev=>{ev.preventDefault();const names=String(new FormData(ev.currentTarget).get("names")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean),rows=names.map(name=>({primary_name:name,response_status:"pending",members:[{name,person_type:"adult",attendance_status:"pending",is_preapproved:true}]})),base=role==="admin"?`/api/admin/events/${eventId}`:`/api/client/${encodeURIComponent(token)}`;try{const r=await api(`${base}/guests/bulk`,{method:"POST",body:JSON.stringify({rows})});w.closeModal();toast(tr(L,`${r.created.length} cadastrado(s)${r.failed.length?`, ${r.failed.length} falharam`:""}.`,`${r.created.length} added${r.failed.length?`, ${r.failed.length} failed`:""}.`),!!r.failed.length);onSaved?.()}catch(e){toast(e.message,true)}};
+ w.querySelector("#bf").onsubmit=async ev=>{
+  ev.preventDefault();
+  const form=ev.currentTarget,button=ev.submitter||form.querySelector('button[type="submit"],button:not([type])');
+  if(button?.disabled)return;
+  const names=String(new FormData(form).get("names")||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  if(!names.length)return toast(tr(L,"Informe pelo menos um nome.","Enter at least one name."),true);
+  const signature=names.join("\n");
+  if(signature!==requestSignature){
+   requestSignature=signature;
+   requestIds=names.map(()=>newCreationRequestId());
+  }
+  const rows=names.map((name,index)=>({creation_request_id:requestIds[index],primary_name:name,response_status:"pending",members:[{name,person_type:"adult",attendance_status:"pending",is_preapproved:true}]}));
+  const base=role==="admin"?`/api/admin/events/${eventId}`:`/api/client/${encodeURIComponent(token)}`;
+  if(button)button.disabled=true;
+  try{
+   const r=await api(`${base}/guests/bulk`,{method:"POST",body:JSON.stringify({rows})});
+   w.closeModal();
+   toast(tr(L,`${r.created.length} cadastrado(s)${r.failed.length?`, ${r.failed.length} falharam`:""}.`,`${r.created.length} added${r.failed.length?`, ${r.failed.length} failed`:""}.`),!!r.failed.length);
+   onSaved?.();
+  }catch(e){
+   if(button)button.disabled=false;
+   toast(e.message,true);
+  }
+ };
 }
+
 async function exportEventPdf({event,base}){
  const L=eventLang(event),win=window.open("","_blank");
  if(!win){
@@ -624,14 +709,17 @@ async function exportEventPdf({event,base}){
   return;
  }
 
+
  win.document.open();
  win.document.write(`<!doctype html><html lang="${L==="en"?"en":"pt-BR"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${tr(L,"Preparando PDF...","Preparing PDF...")}</title><style>body{font-family:Arial,sans-serif;padding:28px;color:#4f2d2a;background:#fffaf7}p{color:#866e68}</style></head><body><h2>${tr(L,"Preparando o PDF...","Preparing the PDF...")}</h2><p>${tr(L,"Carregando convidados e mensagens.","Loading guests and messages.")}</p></body></html>`);
  win.document.close();
+
 
  try{
   const pdfAppearance=safeAppearance(event);
   const guestsData=await api(`${base}/guests?q=&status=`);
   let messages=[];
+
 
   try{
    const messagesData=await api(`${base}/messages?q=`);
@@ -639,6 +727,7 @@ async function exportEventPdf({event,base}){
   }catch{
    messages=[];
   }
+
 
   const guests=guestsData.guests||[];
   const members=guests.flatMap(g=>(g.members||[]).map(m=>({...m,group_name:g.group_label||g.primary_name})));
@@ -650,6 +739,7 @@ async function exportEventPdf({event,base}){
   const statusText=s=>attendanceLabel(s,L);
   const statusSymbol=s=>s==="yes"?"✓":s==="no"?"×":"•";
   const statusClass=s=>s==="yes"?"yes":s==="no"?"no":"pending";
+
 
   const guestSections=guests.length
    ? guests.map(g=>`
@@ -680,6 +770,7 @@ async function exportEventPdf({event,base}){
       </section>`).join("")
    : `<div class="empty">${tr(L,"Nenhum convidado cadastrado.","No guests registered.")}</div>`;
 
+
   const messageSections=messages.length
    ? messages.map(m=>`
       <article class="message">
@@ -687,6 +778,7 @@ async function exportEventPdf({event,base}){
        <div class="message-author"><strong>${esc(m.name)}</strong>${m.responded_at?`<span> • ${esc(fmtDTLang(m.responded_at,L))}</span>`:""}</div>
       </article>`).join("")
    : `<div class="empty">${tr(L,"Nenhuma mensagem carinhosa registrada.","No messages have been submitted.")}</div>`;
+
 
   const html=`<!doctype html>
 <html lang="${L==="en"?"en":"pt-BR"}">
@@ -759,6 +851,7 @@ async function exportEventPdf({event,base}){
  <button class="print-btn" onclick="window.print()">${tr(L,"Salvar / imprimir PDF","Save / print PDF")}</button>
 </body>
 </html>`;
+
 
   win.document.open();
   win.document.write(html);
@@ -847,8 +940,10 @@ function adminSettings(root,info){
 }
 const setting=(l,v)=>`<div class="setting-card"><div><h4>${esc(l)}</h4><p>${esc(v)}</p></div></div>`;
 
+
 async function historyModal(id){try{const d=await api(`/api/admin/events/${id}/audit?limit=200`),w=modal("Histórico",d.logs.length?`<div class="history-list">${d.logs.map(x=>`<div class="history-item"><strong>${esc(({event_created:"Evento criado",event_updated:"Evento editado",guest_created:"Convidado cadastrado",guest_updated:"Convidado editado",guest_deleted:"Convidado excluído",guest_bulk_deleted:"Convidados excluídos em lote",guest_restored:"Convidado restaurado",rsvp_submitted:"Confirmação enviada",media_uploaded:"Mídia enviada",media_deleted:"Mídia removida",event_duplicated:"Evento duplicado"}[x.action]||x.action))}</strong><div class="subtle">${esc(fmtDT(x.created_at))}</div></div>`).join("")}</div>`:`<div class="empty">Sem registros.</div>`)}catch(e){toast(e.message,true)}}
 async function trashModal(id){try{const d=await api(`/api/admin/events/${id}/trash`),w=modal("Lixeira",d.guests.length?`<div class="guest-list">${d.guests.map(g=>`<article class="guest-card"><div class="guest-card-head"><div><h3>${esc(g.group_label||g.primary_name)}</h3><div class="subtle">${esc(fmtDT(g.deleted_at))}</div></div><button class="btn secondary small" data-rest="${g.id}">Restaurar</button></div></article>`).join("")}</div>`:`<div class="empty">Lixeira vazia.</div>`);w.querySelectorAll("[data-rest]").forEach(b=>b.onclick=async()=>{await api(`/api/admin/events/${id}/guests/${b.dataset.rest}/restore`,{method:"POST",body:"{}"});w.closeModal();toast("Restaurado.");renderAdminEvent(id,"guests")})}catch(e){toast(e.message,true)}}
+
 
 async function clientApp(token,requested="overview"){
  try{
@@ -962,6 +1057,7 @@ function listRsvp(e,g){
 }
 function freeRsvp(e){
  const root=document.querySelector("#publicFlow"),f=e.extra_fields||{},t=safeTexts(e),L=eventLang(e),limit=Number(e.max_people_per_rsvp||0)||null;
+ const creationRequestId=newCreationRequestId();
  const companionGate=limit===1
   ?`<div class="notice" style="margin:0"><strong>${tr(L,"Confirmação individual","Individual RSVP")}</strong><div class="subtle" style="margin-top:4px">${tr(L,"Este convite permite confirmar apenas uma pessoa.","This invitation allows only one attendee.")}</div></div>`
   :`<div class="members-editor"><h3>${tr(L,"Você vai levar acompanhante?","Will you bring anyone with you?")}</h3><div class="choice" id="companionChoice"><button type="button" data-c="no">${tr(L,"Não, só eu","No, just me")}</button><button type="button" data-c="yes">${tr(L,"Sim, vou levar","Yes, I will")}</button></div><input type="hidden" name="has_companion" value=""><div id="companionSection" style="display:none"><div style="margin-top:16px"><h3>${tr(L,"Quem vai com você?","Who is coming with you?")}</h3><p class="subtle">${tr(L,"Adicione uma pessoa por campo.","Add one person per field.")}</p></div><div id="freeMembers"></div><div class="actions"><button type="button" class="btn secondary small" id="fa">＋ ${tr(L,"Adicionar um adulto","Add an adult")}</button><button type="button" class="btn secondary small" id="fc">＋ ${tr(L,"Adicionar uma criança","Add a child")}</button></div></div></div>`;
@@ -972,7 +1068,7 @@ function freeRsvp(e){
  root.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-c]").forEach(x=>x.classList.remove("active"));b.classList.add("active");companionStatus.value=b.dataset.c;if(companionSection)companionSection.style.display=b.dataset.c==="yes"?"":"none"});
  root.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-r]").forEach(x=>x.classList.remove("active"));b.classList.add("active");status.value=b.dataset.r;const yes=status.value==="yes";section.style.display=yes?"":"none";if(attendeeDietary)attendeeDietary.style.display=yes?"":"none";declineHint.style.display=yes?"none":"";if(yes)setTimeout(()=>{try{section.scrollIntoView({behavior:"smooth",block:"nearest"})}catch{}},80)});
  bindInvalidScroll(form);
- form.onsubmit=async ev=>{ev.preventDefault();const d=new FormData(form),primaryName=String(d.get("primary_name")||"").trim();if(!status.value){scrollToProblem(root.querySelector(".choice"));return toast(tr(L,"Escolha se você poderá comparecer.","Please choose whether you will attend."),true)}if(status.value==="yes"&&limit!==1&&!companionStatus?.value){scrollToProblem(root.querySelector("#companionChoice"));return toast(tr(L,"Informe se você vai levar acompanhante.","Please tell us whether you are bringing anyone."),true)}const companions=status.value==="yes"&&companionStatus?.value==="yes"&&mr?[...mr.querySelectorAll(".fname")].map(i=>({name:i.value.trim(),person_type:i.dataset.type,attendance_status:"yes"})).filter(x=>x.name):[];if(status.value==="yes"&&companionStatus?.value==="yes"&&!companions.length){scrollToProblem(companionSection);return toast(tr(L,"Adicione pelo menos um acompanhante.","Add at least one companion."),true)}const members=status.value==="yes"?[{name:primaryName,person_type:"adult",attendance_status:"yes"},...companions]:[];if(limit&&members.length>limit){scrollToProblem(section);return toast(tr(L,`Limite de ${limit} pessoa(s).`,`Limit of ${limit} people.`),true)}const b=ev.submitter;b.disabled=true;try{await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",body:JSON.stringify({website:d.get("website"),primary_name:primaryName,response_status:status.value,members,phone:d.get("phone"),dietary:status.value==="yes"?d.get("dietary"):"",notes:d.get("notes"),love_message:d.get("love_message")})});success(e,status.value)}catch(x){toast(x.message,true);b.disabled=false}};
+ form.onsubmit=async ev=>{ev.preventDefault();const d=new FormData(form),primaryName=String(d.get("primary_name")||"").trim();if(!status.value){scrollToProblem(root.querySelector(".choice"));return toast(tr(L,"Escolha se você poderá comparecer.","Please choose whether you will attend."),true)}if(status.value==="yes"&&limit!==1&&!companionStatus?.value){scrollToProblem(root.querySelector("#companionChoice"));return toast(tr(L,"Informe se você vai levar acompanhante.","Please tell us whether you are bringing anyone."),true)}const companions=status.value==="yes"&&companionStatus?.value==="yes"&&mr?[...mr.querySelectorAll(".fname")].map(i=>({name:i.value.trim(),person_type:i.dataset.type,attendance_status:"yes"})).filter(x=>x.name):[];if(status.value==="yes"&&companionStatus?.value==="yes"&&!companions.length){scrollToProblem(companionSection);return toast(tr(L,"Adicione pelo menos um acompanhante.","Add at least one companion."),true)}const members=status.value==="yes"?[{name:primaryName,person_type:"adult",attendance_status:"yes"},...companions]:[];if(limit&&members.length>limit){scrollToProblem(section);return toast(tr(L,`Limite de ${limit} pessoa(s).`,`Limit of ${limit} people.`),true)}const b=ev.submitter;b.disabled=true;try{await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",body:JSON.stringify({creation_request_id:creationRequestId,website:d.get("website"),primary_name:primaryName,response_status:status.value,members,phone:d.get("phone"),dietary:status.value==="yes"?d.get("dietary"):"",notes:d.get("notes"),love_message:d.get("love_message")})});success(e,status.value)}catch(x){toast(x.message,true);b.disabled=false}};
 }
 function success(e,status){
  const t=safeTexts(e),a=safeAppearance(e),yes=status==="yes";
@@ -989,9 +1085,10 @@ function success(e,status){
   ?`<a class="btn ghost block" href="${esc(a.invitation_url)}">← ${esc(t.back_button)}</a>`
   :"";
 
+
  document.querySelector("#publicFlow").innerHTML=`<div class="success"><div class="bubble">${yes?"✓":"♡"}</div><h2>${esc(yes?t.success_title:t.decline_title)}</h2><p>${esc(yes?t.success_message:t.decline_message)}</p>${details}<div class="success-actions">${calendar}${back}</div></div>`;
+
 
  const calendarBtn=document.querySelector("#successCalendar");
  if(calendarBtn)calendarBtn.onclick=()=>openCalendarMenu(e);
 }
-
