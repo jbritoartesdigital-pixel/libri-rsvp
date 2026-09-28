@@ -3,12 +3,14 @@ const JSON_HEADERS = {
   "cache-control": "no-store",
 };
 
+
 const RSVP_TIME_ZONE = "America/Sao_Paulo";
 const MEDIA_PUBLIC_BASE = "https://midia.libriconvites.com.br";
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
 const MAX_BULK_GUESTS = 300;
 const D1_SAFE_BINDING_BATCH_SIZE = 90;
+
 
 const IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
@@ -17,10 +19,12 @@ const IMAGE_MIME_TYPES = new Set([
   "image/avif",
 ]);
 
+
 const VIDEO_MIME_TYPES = new Set([
   "video/mp4",
   "video/webm",
 ]);
+
 
 const MEDIA_KINDS = new Set([
   "background_image",
@@ -29,6 +33,7 @@ const MEDIA_KINDS = new Set([
   "logo",
   "other",
 ]);
+
 
 const DEFAULT_APPEARANCE = {
   background_color: "#f8efec",
@@ -55,6 +60,7 @@ const DEFAULT_APPEARANCE = {
   logo_url: "",
 };
 
+
 const DEFAULT_PUBLIC_TEXTS = {
   eyebrow: "Confirmação de presença",
   intro: "Confirme sua presença para que tudo seja preparado com carinho.",
@@ -74,6 +80,7 @@ const DEFAULT_PUBLIC_TEXTS = {
   back_button: "Voltar ao convite",
   closed_title: "Confirmações encerradas",
 };
+
 
 const DEFAULT_PUBLIC_TEXTS_EN = {
   eyebrow: "RSVP",
@@ -95,6 +102,7 @@ const DEFAULT_PUBLIC_TEXTS_EN = {
   closed_title: "RSVP closed",
 };
 
+
 const DEFAULT_CLIENT_PERMISSIONS = {
   manage_guests: true,
   manage_appearance: true,
@@ -104,38 +112,47 @@ const DEFAULT_CLIENT_PERMISSIONS = {
   manage_event_details: false,
 };
 
+
 export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
 
+
       if (url.pathname.startsWith("/api/")) {
         return await handleApi(request, env, url);
       }
+
 
       return serveApp(request, env);
     } catch (error) {
       console.error(error);
 
+
       if (error instanceof HttpError) {
         return json({ error: error.message }, error.status);
       }
+
 
       return json({ error: "Ocorreu um erro interno." }, 500);
     }
   },
 };
 
+
 async function handleApi(request, env, url) {
   const method = request.method.toUpperCase();
   const path = url.pathname;
+
 
   // =======================================================
   // ADMIN AUTH
   // =======================================================
 
+
   if (path === "/api/admin/login" && method === "POST") {
     const body = await bodyJson(request);
+
 
     if (!env.ADMIN_PASSWORD || !env.SESSION_SECRET) {
       return json(
@@ -144,14 +161,18 @@ async function handleApi(request, env, url) {
       );
     }
 
+
     if (String(body.password || "") !== String(env.ADMIN_PASSWORD)) {
       return json({ error: "Senha incorreta." }, 401);
     }
 
+
     const cookie = await createAdminSession(env);
+
 
     return json({ ok: true }, 200, { "set-cookie": cookie });
   }
+
 
   if (path === "/api/admin/logout" && method === "POST") {
     return json(
@@ -164,13 +185,16 @@ async function handleApi(request, env, url) {
     );
   }
 
+
   if (path === "/api/admin/me" && method === "GET") {
     if (!(await isAdmin(request, env))) {
       return json({ error: "Não autorizado." }, 401);
     }
 
+
     return json({ ok: true });
   }
+
 
   if (path.startsWith("/api/admin/")) {
     if (!(await isAdmin(request, env))) {
@@ -178,9 +202,11 @@ async function handleApi(request, env, url) {
     }
   }
 
+
   // =======================================================
   // ADMIN EVENTS
   // =======================================================
+
 
   if (path === "/api/admin/events" && method === "GET") {
     const archived = url.searchParams.get("archived") === "1";
@@ -188,14 +214,18 @@ async function handleApi(request, env, url) {
     return json({ events });
   }
 
+
   if (path === "/api/admin/events" && method === "POST") {
     const body = await bodyJson(request);
+
 
     if (!String(body.title || "").trim()) {
       return json({ error: "Informe o nome do evento." }, 400);
     }
 
+
     const event = await createEvent(env, body);
+
 
     await audit(env, {
       eventId: event.id,
@@ -204,20 +234,26 @@ async function handleApi(request, env, url) {
       details: { title: event.title },
     });
 
+
     return json({ event });
   }
 
+
   let match = path.match(/^\/api\/admin\/events\/([^/]+)$/);
+
 
   if (match && method === "GET") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     const origin = new URL(request.url).origin;
+
 
     return json({
       event: serializeEvent(event),
@@ -229,16 +265,20 @@ async function handleApi(request, env, url) {
     });
   }
 
+
   if (match && method === "PATCH") {
     const eventId = decodeURIComponent(match[1]);
     const current = await getEvent(env, eventId);
+
 
     if (!current) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     const body = await bodyJson(request);
     const event = await updateEvent(env, current, body, "admin");
+
 
     await audit(env, {
       eventId,
@@ -247,18 +287,23 @@ async function handleApi(request, env, url) {
       details: { title: event.title },
     });
 
+
     return json({ event });
   }
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/status$/);
+
 
   if (match && method === "POST") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
+
 
     if (event.archived_at) {
       return json(
@@ -267,8 +312,10 @@ async function handleApi(request, env, url) {
       );
     }
 
+
     const body = await bodyJson(request);
     const status = body.status === "inactive" ? "inactive" : "active";
+
 
     await env.DB.prepare(`
       UPDATE events
@@ -278,27 +325,34 @@ async function handleApi(request, env, url) {
       .bind(status, now(), eventId)
       .run();
 
+
     await audit(env, {
       eventId,
       actorRole: "admin",
       action: status === "active" ? "event_reactivated" : "event_paused",
     });
 
+
     return json({ event: serializeEvent(await getEvent(env, eventId)) });
   }
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/archive$/);
+
 
   if (match && method === "POST") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     if (!event.archived_at) {
       const archivedAt = now();
+
 
       await env.DB.prepare(`
         UPDATE events
@@ -308,6 +362,7 @@ async function handleApi(request, env, url) {
         .bind(archivedAt, archivedAt, eventId)
         .run();
 
+
       await audit(env, {
         eventId,
         actorRole: "admin",
@@ -315,18 +370,23 @@ async function handleApi(request, env, url) {
       });
     }
 
+
     return json({ ok: true });
   }
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/unarchive$/);
+
 
   if (match && method === "POST") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
+
 
     await env.DB.prepare(`
       UPDATE events
@@ -336,14 +396,17 @@ async function handleApi(request, env, url) {
       .bind(now(), eventId)
       .run();
 
+
     await audit(env, {
       eventId,
       actorRole: "admin",
       action: "event_unarchived",
     });
 
+
     return json({ ok: true });
   }
+
 
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/client-link\/reset$/
@@ -352,11 +415,14 @@ async function handleApi(request, env, url) {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     const token = randomToken();
+
 
     await env.DB.prepare(`
       UPDATE events
@@ -366,11 +432,13 @@ async function handleApi(request, env, url) {
       .bind(token, now(), eventId)
       .run();
 
+
     await audit(env, {
       eventId,
       actorRole: "admin",
       action: "client_link_reset",
     });
+
 
     return json({
       client_url: `${new URL(request.url).origin}/cliente/${encodeURIComponent(
@@ -379,17 +447,22 @@ async function handleApi(request, env, url) {
     });
   }
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/duplicate$/);
+
 
   if (match && method === "POST") {
     const eventId = decodeURIComponent(match[1]);
     const current = await getEvent(env, eventId);
 
+
     if (!current) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     const duplicated = await duplicateEvent(env, current);
+
 
     await audit(env, {
       eventId: duplicated.id,
@@ -401,20 +474,26 @@ async function handleApi(request, env, url) {
       },
     });
 
+
     return json({ event: duplicated });
   }
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/audit$/);
+
 
   if (match && method === "GET") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     const limit = integerBetween(url.searchParams.get("limit") || 100, 1, 300);
+
 
     const result = await env.DB.prepare(`
       SELECT *
@@ -426,48 +505,62 @@ async function handleApi(request, env, url) {
       .bind(eventId, limit)
       .all();
 
+
     return json({ logs: result.results.map(serializeAudit) });
   }
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/trash$/);
+
 
   if (match && method === "GET") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     return json({ guests: await listDeletedGuests(env, eventId) });
   }
+
 
   // =======================================================
   // ADMIN MEDIA
   // =======================================================
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/media$/);
+
 
   if (match && method === "GET") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     return json({ media: await listEventMedia(env, eventId) });
   }
+
 
   if (match && method === "POST") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     const media = await uploadEventMedia(request, env, event);
+
 
     await audit(env, {
       eventId,
@@ -476,23 +569,29 @@ async function handleApi(request, env, url) {
       details: { kind: media.media_kind, name: media.original_name },
     });
 
+
     return json({ media, event: serializeEvent(await getEvent(env, eventId)) });
   }
+
 
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/media\/([^/]+)$/
   );
+
 
   if (match && method === "DELETE") {
     const eventId = decodeURIComponent(match[1]);
     const mediaId = decodeURIComponent(match[2]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     const media = await deleteEventMedia(env, event, mediaId);
+
 
     await audit(env, {
       eventId,
@@ -501,27 +600,34 @@ async function handleApi(request, env, url) {
       details: { kind: media.media_kind, name: media.original_name },
     });
 
+
     return json({ ok: true, event: serializeEvent(await getEvent(env, eventId)) });
   }
+
 
   // =======================================================
   // ADMIN GUESTS
   // =======================================================
 
+
   match = path.match(
     /^\/api\/admin\/events\/([^/]+)\/guests\/([^/]+)\/restore$/
   );
+
 
   if (match && method === "POST") {
     const eventId = decodeURIComponent(match[1]);
     const guestId = decodeURIComponent(match[2]);
     const guest = await getDeletedGuestRow(env, eventId, guestId);
 
+
     if (!guest) {
       return json({ error: "Convidado excluído não encontrado." }, 404);
     }
 
+
     await restoreGuest(env, eventId, guestId);
+
 
     await audit(env, {
       eventId,
@@ -531,21 +637,27 @@ async function handleApi(request, env, url) {
       details: { name: guest.primary_name },
     });
 
+
     return json({ guest: await getGuest(env, eventId, guestId) });
   }
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/guests\/bulk$/);
+
 
   if (match && method === "POST") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     const body = await bodyJson(request);
     const result = await bulkCreateGuests(env, event, body.rows, "admin");
+
 
     await audit(env, {
       eventId,
@@ -554,39 +666,49 @@ async function handleApi(request, env, url) {
       details: { created: result.created.length, failed: result.failed.length },
     });
 
+
     return json(result);
   }
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/guests$/);
+
 
   if (match && method === "GET") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
+
 
     const [guests, counts] = await Promise.all([
       listGuests(env, eventId, url),
       guestStatusCounts(env, eventId),
     ]);
 
+
     return json({ guests, counts });
   }
+
 
   if (match && method === "POST") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
+
 
     const body = await bodyJson(request);
     const members = normalizeManagedMembers(body.members, body.response_status);
     const duplicateMatches = await findDuplicateMembers(env, eventId, members);
     const guest = await createGuest(env, event, body, "admin");
+
 
     await audit(env, {
       eventId,
@@ -596,30 +718,38 @@ async function handleApi(request, env, url) {
       details: { name: guest.primary_name },
     });
 
+
     return json({ guest, duplicate_matches: duplicateMatches });
   }
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/guests\/([^/]+)$/);
+
 
   if (match && method === "PATCH") {
     const eventId = decodeURIComponent(match[1]);
     const guestId = decodeURIComponent(match[2]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
 
+
     const existing = await getGuest(env, eventId, guestId);
+
 
     if (!existing) {
       return json({ error: "Convidado não encontrado." }, 404);
     }
 
+
     const body = await bodyJson(request);
     const members = body.members === undefined
       ? existing.members
       : normalizeManagedMembers(body.members, body.response_status ?? existing.response_status);
+
 
     const duplicateMatches = await findDuplicateMembers(
       env,
@@ -628,7 +758,9 @@ async function handleApi(request, env, url) {
       guestId
     );
 
+
     const guest = await updateGuest(env, event, guestId, body);
+
 
     await audit(env, {
       eventId,
@@ -638,19 +770,24 @@ async function handleApi(request, env, url) {
       details: { name: guest.primary_name },
     });
 
+
     return json({ guest, duplicate_matches: duplicateMatches });
   }
+
 
   if (match && method === "DELETE") {
     const eventId = decodeURIComponent(match[1]);
     const guestId = decodeURIComponent(match[2]);
     const guest = await getGuest(env, eventId, guestId);
 
+
     if (!guest) {
       return json({ error: "Convidado não encontrado." }, 404);
     }
 
+
     await softDeleteGuest(env, eventId, guestId);
+
 
     await audit(env, {
       eventId,
@@ -660,31 +797,40 @@ async function handleApi(request, env, url) {
       details: { name: guest.primary_name },
     });
 
+
     return json({ ok: true });
   }
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/messages$/);
+
 
   if (match && method === "GET") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
+
 
     return json({ messages: await listLoveMessages(env, eventId, url) });
   }
 
+
   match = path.match(/^\/api\/admin\/events\/([^/]+)\/export\.csv$/);
+
 
   if (match && method === "GET") {
     const eventId = decodeURIComponent(match[1]);
     const event = await getEvent(env, eventId);
 
+
     if (!event) {
       return json({ error: "Evento não encontrado." }, 404);
     }
+
 
     const language = normalizeAppearance(safeJson(event.appearance_settings, {})).interface_language;
     return csvResponse(
@@ -694,18 +840,22 @@ async function handleApi(request, env, url) {
     );
   }
 
+
   // =======================================================
   // CLIENT EVENT
   // =======================================================
   match = path.match(/^\/api\/client\/([^/]+)\/event$/);
 
+
   if (match && method === "GET") {
     const token = decodeURIComponent(match[1]);
     const event = await getEventByClientToken(env, token);
 
+
     if (!event) {
       return json({ error: "Este link não é válido ou foi substituído." }, 404);
     }
+
 
     return json({
       event: serializeEvent(event),
@@ -713,16 +863,20 @@ async function handleApi(request, env, url) {
     });
   }
 
+
   if (match && method === "PATCH") {
     const token = decodeURIComponent(match[1]);
     const current = await getEventByClientToken(env, token);
+
 
     if (!current) {
       return json({ error: "Acesso inválido." }, 404);
     }
 
+
     const body = await bodyJson(request);
     const event = await updateEventFromClient(env, current, body);
+
 
     await audit(env, {
       eventId: current.id,
@@ -731,36 +885,46 @@ async function handleApi(request, env, url) {
       details: { title: event.title },
     });
 
+
     return json({ event });
   }
+
 
   // =======================================================
   // CLIENT MEDIA
   // =======================================================
 
+
   match = path.match(/^\/api\/client\/([^/]+)\/media$/);
+
 
   if (match && method === "GET") {
     const token = decodeURIComponent(match[1]);
     const event = await getEventByClientToken(env, token);
 
+
     if (!event) {
       return json({ error: "Acesso inválido." }, 404);
     }
 
+
     return json({ media: await listEventMedia(env, event.id) });
   }
+
 
   if (match && method === "POST") {
     const token = decodeURIComponent(match[1]);
     const event = await getEventByClientToken(env, token);
 
+
     if (!event) {
       return json({ error: "Acesso inválido." }, 404);
     }
 
+
     requireClientPermission(event, "manage_appearance");
     const media = await uploadEventMedia(request, env, event);
+
 
     await audit(env, {
       eventId: event.id,
@@ -769,22 +933,28 @@ async function handleApi(request, env, url) {
       details: { kind: media.media_kind, name: media.original_name },
     });
 
+
     return json({ media, event: serializeEvent(await getEvent(env, event.id)) });
   }
 
+
   match = path.match(/^\/api\/client\/([^/]+)\/media\/([^/]+)$/);
+
 
   if (match && method === "DELETE") {
     const token = decodeURIComponent(match[1]);
     const mediaId = decodeURIComponent(match[2]);
     const event = await getEventByClientToken(env, token);
 
+
     if (!event) {
       return json({ error: "Acesso inválido." }, 404);
     }
 
+
     requireClientPermission(event, "manage_appearance");
     const media = await deleteEventMedia(env, event, mediaId);
+
 
     await audit(env, {
       eventId: event.id,
@@ -793,26 +963,33 @@ async function handleApi(request, env, url) {
       details: { kind: media.media_kind, name: media.original_name },
     });
 
+
     return json({ ok: true, event: serializeEvent(await getEvent(env, event.id)) });
   }
+
 
   // =======================================================
   // CLIENT GUESTS
   // =======================================================
 
+
   match = path.match(/^\/api\/client\/([^/]+)\/guests\/bulk$/);
+
 
   if (match && method === "POST") {
     const token = decodeURIComponent(match[1]);
     const event = await getEventByClientToken(env, token);
 
+
     if (!event) {
       return json({ error: "Acesso inválido." }, 404);
     }
 
+
     requireClientPermission(event, "manage_guests");
     const body = await bodyJson(request);
     const result = await bulkCreateGuests(env, event, body.rows, "client");
+
 
     await audit(env, {
       eventId: event.id,
@@ -821,40 +998,50 @@ async function handleApi(request, env, url) {
       details: { created: result.created.length, failed: result.failed.length },
     });
 
+
     return json(result);
   }
 
+
   match = path.match(/^\/api\/client\/([^/]+)\/guests$/);
+
 
   if (match && method === "GET") {
     const token = decodeURIComponent(match[1]);
     const event = await getEventByClientToken(env, token);
 
+
     if (!event) {
       return json({ error: "Acesso inválido." }, 404);
     }
+
 
     const [guests, counts] = await Promise.all([
       listGuests(env, event.id, url),
       guestStatusCounts(env, event.id),
     ]);
 
+
     return json({ guests, counts });
   }
+
 
   if (match && method === "POST") {
     const token = decodeURIComponent(match[1]);
     const event = await getEventByClientToken(env, token);
 
+
     if (!event) {
       return json({ error: "Acesso inválido." }, 404);
     }
+
 
     requireClientPermission(event, "manage_guests");
     const body = await bodyJson(request);
     const members = normalizeManagedMembers(body.members, body.response_status);
     const duplicateMatches = await findDuplicateMembers(env, event.id, members);
     const guest = await createGuest(env, event, body, "client");
+
 
     await audit(env, {
       eventId: event.id,
@@ -864,31 +1051,39 @@ async function handleApi(request, env, url) {
       details: { name: guest.primary_name },
     });
 
+
     return json({ guest, duplicate_matches: duplicateMatches });
   }
 
+
   match = path.match(/^\/api\/client\/([^/]+)\/guests\/([^/]+)$/);
+
 
   if (match && method === "PATCH") {
     const token = decodeURIComponent(match[1]);
     const guestId = decodeURIComponent(match[2]);
     const event = await getEventByClientToken(env, token);
 
+
     if (!event) {
       return json({ error: "Acesso inválido." }, 404);
     }
 
+
     requireClientPermission(event, "manage_guests");
     const existing = await getGuest(env, event.id, guestId);
+
 
     if (!existing) {
       return json({ error: "Convidado não encontrado." }, 404);
     }
 
+
     const body = await bodyJson(request);
     const members = body.members === undefined
       ? existing.members
       : normalizeManagedMembers(body.members, body.response_status ?? existing.response_status);
+
 
     const duplicateMatches = await findDuplicateMembers(
       env,
@@ -897,7 +1092,9 @@ async function handleApi(request, env, url) {
       guestId
     );
 
+
     const guest = await updateGuest(env, event, guestId, body);
+
 
     await audit(env, {
       eventId: event.id,
@@ -907,26 +1104,33 @@ async function handleApi(request, env, url) {
       details: { name: guest.primary_name },
     });
 
+
     return json({ guest, duplicate_matches: duplicateMatches });
   }
+
 
   if (match && method === "DELETE") {
     const token = decodeURIComponent(match[1]);
     const guestId = decodeURIComponent(match[2]);
     const event = await getEventByClientToken(env, token);
 
+
     if (!event) {
       return json({ error: "Acesso inválido." }, 404);
     }
 
+
     requireClientPermission(event, "manage_guests");
     const guest = await getGuest(env, event.id, guestId);
+
 
     if (!guest) {
       return json({ error: "Convidado não encontrado." }, 404);
     }
 
+
     await softDeleteGuest(env, event.id, guestId);
+
 
     await audit(env, {
       eventId: event.id,
@@ -936,34 +1140,44 @@ async function handleApi(request, env, url) {
       details: { name: guest.primary_name },
     });
 
+
     return json({ ok: true });
   }
 
+
   match = path.match(/^\/api\/client\/([^/]+)\/messages$/);
+
 
   if (match && method === "GET") {
     const token = decodeURIComponent(match[1]);
     const event = await getEventByClientToken(env, token);
 
+
     if (!event) {
       return json({ error: "Acesso inválido." }, 404);
     }
+
 
     requireClientPermission(event, "view_messages");
     return json({ messages: await listLoveMessages(env, event.id, url) });
   }
 
+
   match = path.match(/^\/api\/client\/([^/]+)\/export\.csv$/);
+
 
   if (match && method === "GET") {
     const token = decodeURIComponent(match[1]);
     const event = await getEventByClientToken(env, token);
 
+
     if (!event) {
       return json({ error: "Acesso inválido." }, 404);
     }
 
+
     requireClientPermission(event, "export_guests");
+
 
     const language = normalizeAppearance(safeJson(event.appearance_settings, {})).interface_language;
     return csvResponse(
@@ -973,74 +1187,96 @@ async function handleApi(request, env, url) {
     );
   }
 
+
   // =======================================================
   // PUBLIC EVENT
   // =======================================================
 
+
   match = path.match(/^\/api\/public\/events\/([^/]+)$/);
+
 
   if (match && method === "GET") {
     const slug = decodeURIComponent(match[1]);
     const event = await getEventBySlug(env, slug);
+
 
     if (!event) {
       return json({ error: "Esta confirmação não está disponível." }, 404);
     }
 
+
     return json({ event: publicEvent(event) });
   }
 
+
   match = path.match(/^\/api\/public\/events\/([^/]+)\/suggestions$/);
+
 
   if (match && method === "GET") {
     const slug = decodeURIComponent(match[1]);
     const event = await getEventBySlug(env, slug);
 
+
     if (!event) {
       return json({ error: "Evento indisponível." }, 404);
     }
 
+
     const availability = getRsvpAvailability(event);
+
 
     if (!availability.accepting) {
       return json({ error: availability.reason }, 403);
     }
 
+
     if (event.rsvp_mode !== "list") {
       return json({ suggestions: [] });
     }
 
+
     const q = normalizeName(url.searchParams.get("q") || "");
+
 
     if (q.length < 2) {
       return json({ suggestions: [] });
     }
 
+
     return json({ suggestions: await publicSuggestions(env, event.id, q) });
   }
 
+
   match = path.match(/^\/api\/public\/events\/([^/]+)\/lookup$/);
+
 
   if (match && method === "POST") {
     const slug = decodeURIComponent(match[1]);
     const event = await getEventBySlug(env, slug);
 
+
     if (!event) {
       return json({ error: "Evento indisponível." }, 404);
     }
 
+
     const availability = getRsvpAvailability(event);
+
 
     if (!availability.accepting) {
       return json({ error: availability.reason }, 403);
     }
 
+
     if (event.rsvp_mode !== "list") {
       return json({ error: "Este evento não utiliza lista pré-cadastrada." }, 400);
     }
 
+
     const body = await bodyJson(request);
     let guestRow = null;
+
 
     if (body.guest_id) {
       guestRow = await env.DB.prepare(`
@@ -1053,9 +1289,11 @@ async function handleApi(request, env, url) {
     } else {
       const normalized = normalizeName(body.name || "");
 
+
       if (!normalized) {
         return json({ error: "Digite seu nome." }, 400);
       }
+
 
       guestRow = await env.DB.prepare(`
         SELECT DISTINCT g.*
@@ -1077,6 +1315,7 @@ async function handleApi(request, env, url) {
         .first();
     }
 
+
     if (!guestRow) {
       return json(
         {
@@ -1087,33 +1326,43 @@ async function handleApi(request, env, url) {
       );
     }
 
+
     const guest = await hydrateGuest(env, guestRow);
     return json({ guest: publicGuest(guest, event) });
   }
 
+
   match = path.match(/^\/api\/public\/events\/([^/]+)\/rsvp$/);
+
 
   if (match && method === "POST") {
     const slug = decodeURIComponent(match[1]);
     const event = await getEventBySlug(env, slug);
 
+
     if (!event) {
       return json({ error: "Evento indisponível." }, 404);
     }
 
+
     const availability = getRsvpAvailability(event);
+
 
     if (!availability.accepting) {
       return json({ error: availability.reason }, 403);
     }
 
+
     const body = await bodyJson(request);
+
 
     if (String(body.website || "").trim()) {
       return json({ ok: true });
     }
 
+
     let guest;
+
 
     if (event.rsvp_mode === "list") {
       if (!body.guest_id) {
@@ -1123,10 +1372,12 @@ async function handleApi(request, env, url) {
         );
       }
 
+
       guest = await submitListRsvp(env, event, body);
     } else {
       guest = await submitFreeRsvp(env, event, body);
     }
+
 
     await audit(env, {
       eventId: event.id,
@@ -1140,21 +1391,26 @@ async function handleApi(request, env, url) {
       },
     });
 
+
     return json({ ok: true, guest: publicGuest(guest, event) });
   }
+
 
   return json({ error: "Rota não encontrada." }, 404);
 }
 
+
 // =========================================================
 // EVENTS
 // =========================================================
+
 
 async function createEvent(env, body) {
   const id = crypto.randomUUID();
   const slug = await uniqueSlug(env, body.title);
   const clientToken = randomToken();
   const createdAt = now();
+
 
   const extraFields = normalizeExtraFields(body.extra_fields || {});
   const appearance = normalizeAppearance(body.appearance_settings || {});
@@ -1163,6 +1419,7 @@ async function createEvent(env, body) {
   const backgroundType = normalizeBackgroundType(body.background_type);
   const backgroundImageUrl = normalizeOptionalUrl(body.background_image_url);
   const backgroundVideoUrl = normalizeOptionalUrl(body.background_video_url);
+
 
   await env.DB.prepare(`
     INSERT INTO events (
@@ -1222,31 +1479,39 @@ async function createEvent(env, body) {
     )
     .run();
 
+
   return serializeEvent(await getEvent(env, id));
 }
 
+
 async function updateEvent(env, current, body, actorRole = "admin") {
   const title = String(body.title ?? current.title).trim();
+
 
   if (!title) {
     throw new HttpError(400, "Informe o nome do evento.");
   }
 
+
   const extraFields = body.extra_fields !== undefined
     ? normalizeExtraFields(body.extra_fields)
     : normalizeExtraFields(safeJson(current.extra_fields, {}));
+
 
   const appearance = body.appearance_settings !== undefined
     ? normalizeAppearance(body.appearance_settings)
     : normalizeAppearance(safeJson(current.appearance_settings, {}));
 
+
   const publicTexts = body.public_texts !== undefined
     ? normalizePublicTexts(body.public_texts, appearance.interface_language)
     : normalizePublicTexts(safeJson(current.public_texts, {}), appearance.interface_language);
 
+
   const clientPermissions = body.client_permissions !== undefined
     ? normalizeClientPermissions(body.client_permissions)
     : normalizeClientPermissions(safeJson(current.client_permissions, {}));
+
 
   const rsvpMode = body.rsvp_mode === "list"
     ? "list"
@@ -1254,17 +1519,20 @@ async function updateEvent(env, current, body, actorRole = "admin") {
       ? "free"
       : current.rsvp_mode;
 
+
   const backgroundImageUrl = normalizeOptionalUrl(
     body.background_image_url !== undefined
       ? body.background_image_url
       : current.background_image_url
   );
 
+
   const backgroundVideoUrl = normalizeOptionalUrl(
     body.background_video_url !== undefined
       ? body.background_video_url
       : current.background_video_url
   );
+
 
   await env.DB.prepare(`
     UPDATE events
@@ -1334,37 +1602,46 @@ async function updateEvent(env, current, body, actorRole = "admin") {
     )
     .run();
 
+
   return serializeEvent(await getEvent(env, current.id));
 }
+
 
 async function updateEventFromClient(env, current, body) {
   const permissions = normalizeClientPermissions(
     safeJson(current.client_permissions, {})
   );
 
+
   const patch = {};
+
 
   if (body.appearance_settings !== undefined || body.background_type !== undefined) {
     if (!permissions.manage_appearance) {
       throw new HttpError(403, "A personalização visual está bloqueada para este evento.");
     }
 
+
     if (body.appearance_settings !== undefined) {
       patch.appearance_settings = body.appearance_settings;
     }
+
 
     if (body.background_type !== undefined) {
       patch.background_type = body.background_type;
     }
   }
 
+
   if (body.public_texts !== undefined) {
     if (!permissions.manage_texts) {
       throw new HttpError(403, "A edição dos textos está bloqueada para este evento.");
     }
 
+
     patch.public_texts = body.public_texts;
   }
+
 
   const detailKeys = [
     "event_date",
@@ -1372,12 +1649,15 @@ async function updateEventFromClient(env, current, body) {
     "welcome_message",
   ];
 
+
   const wantsDetails = detailKeys.some((key) => body[key] !== undefined);
+
 
   if (wantsDetails) {
     if (!permissions.manage_event_details) {
       throw new HttpError(403, "A edição dos dados do evento está bloqueada.");
     }
+
 
     for (const key of detailKeys) {
       if (body[key] !== undefined) {
@@ -1386,12 +1666,15 @@ async function updateEventFromClient(env, current, body) {
     }
   }
 
+
   if (!Object.keys(patch).length) {
     return serializeEvent(current);
   }
 
+
   return updateEvent(env, current, patch, "client");
 }
+
 
 async function duplicateEvent(env, current) {
   const copyTitle = `${current.title} • cópia`;
@@ -1415,6 +1698,7 @@ async function duplicateEvent(env, current) {
     list_behavior: current.list_behavior,
   });
 }
+
 
 async function getEventsWithSummary(env, archived = false) {
   const result = await env.DB.prepare(`
@@ -1483,6 +1767,7 @@ async function getEventsWithSummary(env, archived = false) {
     .bind(archived ? 1 : 0, archived ? 1 : 0)
     .all();
 
+
   return result.results.map((row) => ({
     ...serializeEvent(row),
     yes_responses: Number(row.yes_responses || 0),
@@ -1501,6 +1786,7 @@ async function getEvent(env, id) {
     .first();
 }
 
+
 async function getEventBySlug(env, slug) {
   return env.DB.prepare(`
     SELECT * FROM events WHERE slug = ? LIMIT 1
@@ -1509,8 +1795,10 @@ async function getEventBySlug(env, slug) {
     .first();
 }
 
+
 async function getEventByClientToken(env, token) {
   if (!token) return null;
+
 
   return env.DB.prepare(`
     SELECT * FROM events WHERE client_token = ? LIMIT 1
@@ -1518,6 +1806,7 @@ async function getEventByClientToken(env, token) {
     .bind(token)
     .first();
 }
+
 
 async function getSummary(env, eventId) {
   const guestRow = await env.DB.prepare(`
@@ -1530,6 +1819,7 @@ async function getSummary(env, eventId) {
   `)
     .bind(eventId)
     .first();
+
 
   const memberRow = await env.DB.prepare(`
     SELECT
@@ -1546,6 +1836,7 @@ async function getSummary(env, eventId) {
     .bind(eventId)
     .first();
 
+
   return {
     yes_responses: Number(guestRow?.yes_responses || 0),
     no_responses: Number(guestRow?.no_responses || 0),
@@ -1557,6 +1848,7 @@ async function getSummary(env, eventId) {
   };
 }
 
+
 function getRsvpAvailability(event) {
   if (event.archived_at) {
     return {
@@ -1565,12 +1857,14 @@ function getRsvpAvailability(event) {
     };
   }
 
+
   if (event.status !== "active") {
     return {
       accepting: false,
       reason: "As confirmações estão temporariamente pausadas.",
     };
   }
+
 
   if (event.rsvp_deadline && hasDeadlinePassed(event.rsvp_deadline)) {
     return {
@@ -1579,12 +1873,15 @@ function getRsvpAvailability(event) {
     };
   }
 
+
   return { accepting: true, reason: null };
 }
+
 
 // =========================================================
 // MEDIA / R2
 // =========================================================
+
 
 async function listEventMedia(env, eventId) {
   const result = await env.DB.prepare(`
@@ -1596,32 +1893,41 @@ async function listEventMedia(env, eventId) {
     .bind(eventId)
     .all();
 
+
   return result.results.map(serializeMedia);
 }
+
 
 async function uploadEventMedia(request, env, event) {
   ensureMediaBinding(env);
 
+
   const contentType = request.headers.get("content-type") || "";
+
 
   if (!contentType.toLowerCase().includes("multipart/form-data")) {
     throw new HttpError(400, "Envie a mídia pelo campo de upload.");
   }
 
+
   const form = await request.formData();
   const file = form.get("file");
   const kind = normalizeMediaKind(form.get("kind"));
+
 
   if (!(file instanceof File)) {
     throw new HttpError(400, "Escolha um arquivo para enviar.");
   }
 
+
   validateMediaFile(file, kind);
+
 
   const objectKey = buildMediaObjectKey(event.id, kind, file.type);
   const publicUrl = publicUrlForKey(objectKey);
   const mediaId = crypto.randomUUID();
   const createdAt = now();
+
 
   await env.MEDIA.put(objectKey, file, {
     httpMetadata: {
@@ -1634,6 +1940,7 @@ async function uploadEventMedia(request, env, event) {
       originalName: sanitizeMetadataText(file.name, 200),
     },
   });
+
 
   try {
     await env.DB.prepare(`
@@ -1664,11 +1971,13 @@ async function uploadEventMedia(request, env, event) {
       )
       .run();
 
+
     await applyMediaToEvent(env, event, kind, publicUrl);
   } catch (error) {
     await env.MEDIA.delete(objectKey).catch(() => {});
     throw error;
   }
+
 
   return serializeMedia(
     await env.DB.prepare(`
@@ -1679,8 +1988,10 @@ async function uploadEventMedia(request, env, event) {
   );
 }
 
+
 async function deleteEventMedia(env, event, mediaId) {
   ensureMediaBinding(env);
+
 
   const media = await env.DB.prepare(`
     SELECT *
@@ -1691,13 +2002,17 @@ async function deleteEventMedia(env, event, mediaId) {
     .bind(mediaId, event.id)
     .first();
 
+
   if (!media) {
     throw new HttpError(404, "Mídia não encontrada.");
   }
 
+
   await env.MEDIA.delete(media.object_key);
 
+
   const deletedAt = now();
+
 
   await env.DB.prepare(`
     UPDATE event_media
@@ -1707,10 +2022,13 @@ async function deleteEventMedia(env, event, mediaId) {
     .bind(deletedAt, mediaId, event.id)
     .run();
 
+
   await removeMediaFromEvent(env, event, media);
+
 
   return serializeMedia({ ...media, deleted_at: deletedAt });
 }
+
 
 async function applyMediaToEvent(env, event, kind, publicUrl) {
   if (kind === "background_image") {
@@ -1722,8 +2040,10 @@ async function applyMediaToEvent(env, event, kind, publicUrl) {
       .bind(publicUrl, now(), event.id)
       .run();
 
+
     return;
   }
+
 
   if (kind === "background_video") {
     await env.DB.prepare(`
@@ -1734,12 +2054,15 @@ async function applyMediaToEvent(env, event, kind, publicUrl) {
       .bind(publicUrl, now(), event.id)
       .run();
 
+
     return;
   }
+
 
   if (kind === "cover" || kind === "logo") {
     const appearance = normalizeAppearance(safeJson(event.appearance_settings, {}));
     appearance[kind === "cover" ? "cover_url" : "logo_url"] = publicUrl;
+
 
     await env.DB.prepare(`
       UPDATE events
@@ -1750,34 +2073,41 @@ async function applyMediaToEvent(env, event, kind, publicUrl) {
   }
 }
 
+
 async function removeMediaFromEvent(env, event, media) {
   const latest = await getEvent(env, event.id);
   const appearance = normalizeAppearance(safeJson(latest.appearance_settings, {}));
   let changedAppearance = false;
 
+
   let backgroundImageUrl = latest.background_image_url;
   let backgroundVideoUrl = latest.background_video_url;
   let backgroundType = normalizeBackgroundType(latest.background_type);
+
 
   if (backgroundImageUrl === media.public_url) {
     backgroundImageUrl = null;
     if (backgroundType === "image") backgroundType = "none";
   }
 
+
   if (backgroundVideoUrl === media.public_url) {
     backgroundVideoUrl = null;
     if (backgroundType === "video") backgroundType = "none";
   }
+
 
   if (appearance.cover_url === media.public_url) {
     appearance.cover_url = "";
     changedAppearance = true;
   }
 
+
   if (appearance.logo_url === media.public_url) {
     appearance.logo_url = "";
     changedAppearance = true;
   }
+
 
   await env.DB.prepare(`
     UPDATE events
@@ -1800,59 +2130,73 @@ async function removeMediaFromEvent(env, event, media) {
     .run();
 }
 
+
 function ensureMediaBinding(env) {
   if (!env.MEDIA) {
     throw new HttpError(500, "O armazenamento de mídia ainda não está conectado ao Worker.");
   }
 }
 
+
 function normalizeMediaKind(value) {
   const kind = String(value || "").trim();
+
 
   if (!MEDIA_KINDS.has(kind)) {
     throw new HttpError(400, "Tipo de mídia inválido.");
   }
 
+
   return kind;
 }
+
 
 function validateMediaFile(file, kind) {
   if (!file.size) {
     throw new HttpError(400, "O arquivo está vazio.");
   }
 
+
   if (kind === "background_video") {
     if (!VIDEO_MIME_TYPES.has(file.type)) {
       throw new HttpError(400, "Use vídeo MP4 ou WebM para o fundo.");
     }
 
+
     if (file.size > MAX_VIDEO_BYTES) {
       throw new HttpError(400, "O vídeo de fundo pode ter no máximo 20 MB.");
     }
 
+
     return;
   }
+
 
   if (kind === "background_image" || kind === "cover" || kind === "logo") {
     if (!IMAGE_MIME_TYPES.has(file.type)) {
       throw new HttpError(400, "Use imagem JPG, PNG, WebP ou AVIF.");
     }
 
+
     if (file.size > MAX_IMAGE_BYTES) {
       throw new HttpError(400, "A imagem pode ter no máximo 10 MB.");
     }
 
+
     return;
   }
+
 
   if (!IMAGE_MIME_TYPES.has(file.type) && !VIDEO_MIME_TYPES.has(file.type)) {
     throw new HttpError(400, "Formato de arquivo não permitido.");
   }
 
+
   if (file.size > MAX_VIDEO_BYTES) {
     throw new HttpError(400, "O arquivo pode ter no máximo 20 MB.");
   }
 }
+
 
 function buildMediaObjectKey(eventId, kind, mimeType) {
   const ext = extensionForMime(mimeType);
@@ -1860,6 +2204,7 @@ function buildMediaObjectKey(eventId, kind, mimeType) {
   const unique = `${Date.now()}-${crypto.randomUUID()}`;
   return `rsvp/${eventId}/${folder}/${unique}.${ext}`;
 }
+
 
 function extensionForMime(mimeType) {
   const map = {
@@ -1871,8 +2216,10 @@ function extensionForMime(mimeType) {
     "video/webm": "webm",
   };
 
+
   return map[mimeType] || "bin";
 }
+
 
 function publicUrlForKey(key) {
   return `${MEDIA_PUBLIC_BASE}/${key
@@ -1881,8 +2228,10 @@ function publicUrlForKey(key) {
     .join("/")}`;
 }
 
+
 function serializeMedia(row) {
   if (!row) return null;
+
 
   return {
     id: row.id,
@@ -1897,13 +2246,16 @@ function serializeMedia(row) {
   };
 }
 
+
 // =========================================================
 // GUEST LISTS
 // =========================================================
 
+
 async function listGuests(env, eventId, url) {
   const q = normalizeName(url.searchParams.get("q") || "");
   const status = url.searchParams.get("status") || "";
+
 
   let sql = `
     SELECT DISTINCT g.*
@@ -1915,7 +2267,9 @@ async function listGuests(env, eventId, url) {
       AND g.deleted_at IS NULL
   `;
 
+
   const bindings = [eventId];
+
 
   if (q) {
     sql += `
@@ -1926,13 +2280,16 @@ async function listGuests(env, eventId, url) {
       )
     `;
 
+
     bindings.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
+
 
   if (["yes", "no", "pending"].includes(status)) {
     sql += ` AND g.response_status = ? `;
     bindings.push(status);
   }
+
 
   sql += `
     ORDER BY
@@ -1945,9 +2302,11 @@ async function listGuests(env, eventId, url) {
       COALESCE(NULLIF(g.group_label, ''), g.primary_name) COLLATE NOCASE ASC
   `;
 
+
   const result = await env.DB.prepare(sql).bind(...bindings).all();
   return hydrateGuests(env, result.results);
 }
+
 
 async function guestStatusCounts(env, eventId) {
   const row = await env.DB.prepare(`
@@ -1962,6 +2321,7 @@ async function guestStatusCounts(env, eventId) {
     .bind(eventId)
     .first();
 
+
   return {
     total: Number(row?.total || 0),
     yes: Number(row?.yes_count || 0),
@@ -1969,6 +2329,7 @@ async function guestStatusCounts(env, eventId) {
     no: Number(row?.no_count || 0),
   };
 }
+
 
 async function listGuestsRaw(env, eventId) {
   const result = await env.DB.prepare(`
@@ -1980,8 +2341,10 @@ async function listGuestsRaw(env, eventId) {
     .bind(eventId)
     .all();
 
+
   return hydrateGuests(env, result.results);
 }
+
 
 async function listDeletedGuests(env, eventId) {
   const result = await env.DB.prepare(`
@@ -1993,8 +2356,10 @@ async function listDeletedGuests(env, eventId) {
     .bind(eventId)
     .all();
 
+
   return hydrateGuests(env, result.results, true);
 }
+
 
 async function getDeletedGuestRow(env, eventId, guestId) {
   return env.DB.prepare(`
@@ -2007,6 +2372,7 @@ async function getDeletedGuestRow(env, eventId, guestId) {
     .first();
 }
 
+
 async function getGuest(env, eventId, guestId) {
   const row = await env.DB.prepare(`
     SELECT *
@@ -2017,8 +2383,61 @@ async function getGuest(env, eventId, guestId) {
     .bind(guestId, eventId)
     .first();
 
+
   if (!row) return null;
   return hydrateGuest(env, row);
+}
+
+
+
+function normalizeCreationRequestId(value) {
+  if (
+    value === undefined ||
+    value === null ||
+    String(value).trim() === ""
+  ) {
+    return null;
+  }
+
+  const requestId = String(value).trim();
+
+  if (
+    requestId.length < 8 ||
+    requestId.length > 120 ||
+    !/^[A-Za-z0-9._:-]+$/.test(requestId)
+  ) {
+    throw new HttpError(400, "Identificador de cadastro inválido.");
+  }
+
+  return requestId;
+}
+
+async function getGuestByCreationRequestId(env, eventId, creationRequestId) {
+  if (!creationRequestId) return null;
+
+  const row = await env.DB.prepare(`
+    SELECT *
+    FROM guests
+    WHERE event_id = ?
+      AND creation_request_id = ?
+      AND deleted_at IS NULL
+    LIMIT 1
+  `)
+    .bind(eventId, creationRequestId)
+    .first();
+
+  if (!row) return null;
+  return hydrateGuest(env, row);
+}
+
+function isUniqueConstraintError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+
+  return (
+    message.includes("unique constraint failed") ||
+    message.includes("sqlite_constraint_unique") ||
+    message.includes("sqlite_constraint")
+  );
 }
 
 async function createGuest(env, event, body, source) {
@@ -2030,6 +2449,22 @@ async function createGuest(env, event, body, source) {
 
   if (primaryName.length > 150) {
     throw new HttpError(400, "O nome informado é muito longo.");
+  }
+
+  const creationRequestId = normalizeCreationRequestId(
+    body.creation_request_id
+  );
+
+  if (creationRequestId) {
+    const existingRequest = await getGuestByCreationRequestId(
+      env,
+      event.id,
+      creationRequestId
+    );
+
+    if (existingRequest) {
+      return existingRequest;
+    }
   }
 
   const id = crypto.randomUUID();
@@ -2047,36 +2482,37 @@ async function createGuest(env, event, body, source) {
     maxChildrenAllowed,
   });
 
-  await env.DB.prepare(`
-    INSERT INTO guests (
-      id,
-      event_id,
-      primary_name,
-      normalized_name,
-      response_status,
-      phone,
-      adults,
-      children,
-      companions,
-      dietary,
-      notes,
-      love_message,
-      source,
-      group_label,
-      normalized_group_label,
-      max_people_allowed,
-      max_adults_allowed,
-      max_children_allowed,
-      responded_at,
-      created_at,
-      updated_at,
-      deleted_at
-    )
-    VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL
-    )
-  `)
-    .bind(
+  const statements = [
+    env.DB.prepare(`
+      INSERT INTO guests (
+        id,
+        event_id,
+        primary_name,
+        normalized_name,
+        response_status,
+        phone,
+        adults,
+        children,
+        companions,
+        dietary,
+        notes,
+        love_message,
+        source,
+        group_label,
+        normalized_group_label,
+        max_people_allowed,
+        max_adults_allowed,
+        max_children_allowed,
+        responded_at,
+        created_at,
+        updated_at,
+        deleted_at,
+        creation_request_id
+      )
+      VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?
+      )
+    `).bind(
       id,
       event.id,
       primaryName,
@@ -2097,34 +2533,96 @@ async function createGuest(env, event, body, source) {
       maxChildrenAllowed,
       status === "pending" ? null : createdAt,
       createdAt,
-      createdAt
-    )
-    .run();
+      createdAt,
+      creationRequestId
+    ),
+  ];
 
-  await syncManagedGuestMembers(env, event.id, id, members, []);
+  members.forEach((member, index) => {
+    statements.push(
+      env.DB.prepare(`
+        INSERT INTO guest_members (
+          id,
+          guest_id,
+          event_id,
+          name,
+          normalized_name,
+          person_type,
+          is_primary,
+          sort_order,
+          created_at,
+          updated_at,
+          deleted_at,
+          attendance_status,
+          is_preapproved
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+      `).bind(
+        crypto.randomUUID(),
+        id,
+        event.id,
+        member.name,
+        normalizeName(member.name),
+        member.person_type,
+        index === 0 ? 1 : 0,
+        index,
+        createdAt,
+        createdAt,
+        member.attendance_status,
+        member.is_preapproved === false ? 0 : 1
+      )
+    );
+  });
+
+  try {
+    await env.DB.batch(statements);
+  } catch (error) {
+    if (creationRequestId && isUniqueConstraintError(error)) {
+      const replay = await getGuestByCreationRequestId(
+        env,
+        event.id,
+        creationRequestId
+      );
+
+      if (replay) {
+        return replay;
+      }
+    }
+
+    throw error;
+  }
+
   return getGuest(env, event.id, id);
 }
+
 async function updateGuest(env, event, guestId, body) {
   const existing = await getGuest(env, event.id, guestId);
 
+
   if (!existing) return null;
 
+
   const primaryName = String(body.primary_name ?? existing.primary_name).trim();
+
 
   if (!primaryName) {
     throw new HttpError(400, "Informe o nome do responsável pela confirmação.");
   }
 
+
   if (primaryName.length > 150) {
     throw new HttpError(400, "O nome informado é muito longo.");
   }
+
 
   const requestedStatus = body.response_status !== undefined
     ? allowedStatus(body.response_status)
     : existing.response_status;
 
+
   const shouldApplyFamilyStatus =
     body.members === undefined && ["yes", "no"].includes(requestedStatus);
+
 
   const members = body.members === undefined
     ? existing.members.map((member) => ({
@@ -2135,29 +2633,36 @@ async function updateGuest(env, event, guestId, body) {
       }))
     : normalizeManagedMembers(body.members, requestedStatus);
 
+
   const status = deriveGroupStatus(members, requestedStatus);
+
 
   const groupLabel = body.group_label !== undefined
     ? cleanOptionalText(body.group_label, 150)
     : existing.group_label || null;
 
+
   let maxPeopleAllowed = body.max_people_allowed !== undefined
     ? normalizeOptionalInteger(body.max_people_allowed, 1, 100)
     : existing.max_people_allowed;
+
 
   const maxAdultsAllowed = body.max_adults_allowed !== undefined
     ? normalizeOptionalInteger(body.max_adults_allowed, 0, 100)
     : existing.max_adults_allowed;
 
+
   const maxChildrenAllowed = body.max_children_allowed !== undefined
     ? normalizeOptionalInteger(body.max_children_allowed, 0, 100)
     : existing.max_children_allowed;
+
 
   maxPeopleAllowed = validateGuestTypeLimits({
     maxPeopleAllowed,
     maxAdultsAllowed,
     maxChildrenAllowed,
   });
+
 
   await env.DB.prepare(`
     UPDATE guests
@@ -2216,12 +2721,15 @@ async function updateGuest(env, event, guestId, body) {
     )
     .run();
 
+
   if (body.members !== undefined || shouldApplyFamilyStatus) {
     await syncManagedGuestMembers(env, event.id, guestId, members, existing.members);
   }
 
+
   return getGuest(env, event.id, guestId);
 }
+
 
 async function syncManagedGuestMembers(env, eventId, guestId, members, existingMembers) {
   const currentTime = now();
@@ -2231,11 +2739,14 @@ async function syncManagedGuestMembers(env, eventId, guestId, members, existingM
   const keepIds = new Set();
   const statements = [];
 
+
   members.forEach((member, index) => {
     const existing = member.id ? existingById.get(member.id) : null;
 
+
     if (existing) {
       keepIds.add(existing.id);
+
 
       statements.push(
         env.DB.prepare(`
@@ -2266,6 +2777,7 @@ async function syncManagedGuestMembers(env, eventId, guestId, members, existingM
     } else {
       const id = crypto.randomUUID();
       keepIds.add(id);
+
 
       statements.push(
         env.DB.prepare(`
@@ -2302,6 +2814,7 @@ async function syncManagedGuestMembers(env, eventId, guestId, members, existingM
     }
   });
 
+
   for (const existing of existingMembers || []) {
     if (existing.id && !keepIds.has(existing.id)) {
       statements.push(
@@ -2314,15 +2827,18 @@ async function syncManagedGuestMembers(env, eventId, guestId, members, existingM
     }
   }
 
+
   if (statements.length) {
     await env.DB.batch(statements);
   }
 }
 
+
 async function bulkCreateGuests(env, event, rows, source) {
   if (!Array.isArray(rows) || !rows.length) {
     throw new HttpError(400, "Envie pelo menos um convidado para importar.");
   }
+
 
   if (rows.length > MAX_BULK_GUESTS) {
     throw new HttpError(
@@ -2331,8 +2847,10 @@ async function bulkCreateGuests(env, event, rows, source) {
     );
   }
 
+
   const created = [];
   const failed = [];
+
 
   for (let index = 0; index < rows.length; index++) {
     try {
@@ -2347,11 +2865,14 @@ async function bulkCreateGuests(env, event, rows, source) {
     }
   }
 
+
   return { created, failed };
 }
 
+
 async function softDeleteGuest(env, eventId, guestId) {
   const currentTime = now();
+
 
   await env.DB.batch([
     env.DB.prepare(`
@@ -2359,6 +2880,7 @@ async function softDeleteGuest(env, eventId, guestId) {
       SET deleted_at = ?, updated_at = ?
       WHERE id = ? AND event_id = ? AND deleted_at IS NULL
     `).bind(currentTime, currentTime, guestId, eventId),
+
 
     env.DB.prepare(`
       UPDATE guest_members
@@ -2368,8 +2890,10 @@ async function softDeleteGuest(env, eventId, guestId) {
   ]);
 }
 
+
 async function restoreGuest(env, eventId, guestId) {
   const currentTime = now();
+
 
   await env.DB.batch([
     env.DB.prepare(`
@@ -2377,6 +2901,7 @@ async function restoreGuest(env, eventId, guestId) {
       SET deleted_at = NULL, updated_at = ?
       WHERE id = ? AND event_id = ?
     `).bind(currentTime, guestId, eventId),
+
 
     env.DB.prepare(`
       UPDATE guest_members
@@ -2386,15 +2911,19 @@ async function restoreGuest(env, eventId, guestId) {
   ]);
 }
 
+
 async function hydrateGuests(env, rows, includeDeleted = false) {
   if (!rows.length) return [];
+
 
   const guestIds = rows.map((row) => row.id);
   const statements = [];
 
+
   for (let index = 0; index < guestIds.length; index += D1_SAFE_BINDING_BATCH_SIZE) {
     const batchIds = guestIds.slice(index, index + D1_SAFE_BINDING_BATCH_SIZE);
     const placeholders = batchIds.map(() => "?").join(",");
+
 
     statements.push(
       env.DB.prepare(`
@@ -2407,9 +2936,12 @@ async function hydrateGuests(env, rows, includeDeleted = false) {
     );
   }
 
+
   const results = await env.DB.batch(statements);
 
+
   const map = new Map();
+
 
   for (const result of results) {
     for (const member of result.results || []) {
@@ -2417,11 +2949,13 @@ async function hydrateGuests(env, rows, includeDeleted = false) {
         map.set(member.guest_id, []);
       }
 
+
       map.get(member.guest_id).push(serializeMember(member));
     }
   }
   return rows.map((row) => serializeGuestRow(row, map.get(row.id) || []));
 }
+
 
 async function hydrateGuest(env, row) {
   const result = await env.DB.prepare(`
@@ -2433,8 +2967,10 @@ async function hydrateGuest(env, row) {
     .bind(row.id)
     .all();
 
+
   return serializeGuestRow(row, result.results.map(serializeMember));
 }
+
 
 async function findDuplicateMembers(env, eventId, members, excludeGuestId = null) {
   const normalizedNames = [
@@ -2445,9 +2981,12 @@ async function findDuplicateMembers(env, eventId, members, excludeGuestId = null
     ),
   ];
 
+
   if (!normalizedNames.length) return [];
 
+
   const placeholders = normalizedNames.map(() => "?").join(",");
+
 
   let sql = `
     SELECT
@@ -2464,12 +3003,15 @@ async function findDuplicateMembers(env, eventId, members, excludeGuestId = null
       AND gm.normalized_name IN (${placeholders})
   `;
 
+
   const bindings = [eventId, ...normalizedNames];
+
 
   if (excludeGuestId) {
     sql += ` AND gm.guest_id != ? `;
     bindings.push(excludeGuestId);
   }
+
 
   const result = await env.DB.prepare(sql).bind(...bindings).all();
   return result.results.map((row) => ({
@@ -2479,8 +3021,10 @@ async function findDuplicateMembers(env, eventId, members, excludeGuestId = null
   }));
 }
 
+
 async function listLoveMessages(env, eventId, url) {
   const q = normalizeName(url.searchParams.get("q") || "");
+
 
   let sql = `
     SELECT
@@ -2498,7 +3042,9 @@ async function listLoveMessages(env, eventId, url) {
       AND trim(love_message) <> ''
   `;
 
+
   const bindings = [eventId];
+
 
   if (q) {
     sql += `
@@ -2510,9 +3056,12 @@ async function listLoveMessages(env, eventId, url) {
     bindings.push(`%${q}%`, `%${q}%`);
   }
 
+
   sql += ` ORDER BY COALESCE(responded_at, updated_at) DESC `;
 
+
   const result = await env.DB.prepare(sql).bind(...bindings).all();
+
 
   return result.results.map((row) => ({
     guest_id: row.id,
@@ -2524,13 +3073,16 @@ async function listLoveMessages(env, eventId, url) {
   }));
 }
 
+
 // =========================================================
 // PUBLIC LIST SEARCH
 // =========================================================
 
+
 async function publicSuggestions(env, eventId, q) {
   const contains = `%${q}%`;
   const prefix = `${q}%`;
+
 
   const result = await env.DB.prepare(`
     SELECT
@@ -2555,6 +3107,7 @@ async function publicSuggestions(env, eventId, q) {
     .bind(eventId, contains, prefix)
     .all();
 
+
   return result.results.map((row) => ({
     guest_id: row.guest_id,
     member_id: row.member_id,
@@ -2562,6 +3115,7 @@ async function publicSuggestions(env, eventId, q) {
     person_type: row.person_type === "child" ? "child" : "adult",
   }));
 }
+
 
 function publicGuest(guest, event) {
   return {
@@ -2584,14 +3138,17 @@ function publicGuest(guest, event) {
   };
 }
 
+
 function maskPublicName(name) {
   const parts = String(name || "")
     .trim()
     .split(/\s+/)
     .filter(Boolean);
 
+
   if (!parts.length) return "Convidado";
   if (parts.length === 1) return parts[0];
+
 
   return `${parts[0]} ${parts
     .slice(1)
@@ -2599,19 +3156,24 @@ function maskPublicName(name) {
     .join(" ")}`;
 }
 
+
 // =========================================================
 // PUBLIC RSVP
 // =========================================================
 
+
 async function submitListRsvp(env, event, body) {
   const existing = await getGuest(env, event.id, String(body.guest_id));
+
 
   if (!existing) {
     throw new HttpError(404, "Convidado não encontrado neste evento.");
   }
 
+
   const listBehavior = normalizeListBehavior(event.list_behavior);
   const responseMap = new Map();
+
 
   if (Array.isArray(body.member_responses)) {
     for (const item of body.member_responses) {
@@ -2621,9 +3183,11 @@ async function submitListRsvp(env, event, body) {
     }
   }
 
+
   const familyFallback = ["yes", "no"].includes(body.response_status)
     ? body.response_status
     : null;
+
 
   const removeIds = new Set(
     Array.isArray(body.remove_member_ids)
@@ -2631,7 +3195,9 @@ async function submitListRsvp(env, event, body) {
       : []
   );
 
+
   const projectedExisting = [];
+
 
   for (const member of existing.members) {
     if (removeIds.has(member.id)) {
@@ -2642,8 +3208,10 @@ async function submitListRsvp(env, event, body) {
         );
       }
 
+
       continue;
     }
+
 
     projectedExisting.push({
       ...member,
@@ -2655,9 +3223,11 @@ async function submitListRsvp(env, event, body) {
     });
   }
 
+
   const newMembers = listBehavior === "flexible"
     ? normalizePublicNewMembers(body.new_members)
     : [];
+
 
   if (
     listBehavior === "strict" &&
@@ -2670,12 +3240,15 @@ async function submitListRsvp(env, event, body) {
     );
   }
 
+
   const localNames = new Set(
     projectedExisting.map((member) => normalizeName(member.name)).filter(Boolean)
   );
 
+
   for (const member of newMembers) {
     const normalized = normalizeName(member.name);
+
 
     if (localNames.has(normalized)) {
       throw new HttpError(
@@ -2684,8 +3257,10 @@ async function submitListRsvp(env, event, body) {
       );
     }
 
+
     localNames.add(normalized);
   }
+
 
   if (newMembers.length) {
     const duplicates = await findDuplicateMembers(
@@ -2695,6 +3270,7 @@ async function submitListRsvp(env, event, body) {
       existing.id
     );
 
+
     if (duplicates.length) {
       throw new HttpError(
         400,
@@ -2702,6 +3278,7 @@ async function submitListRsvp(env, event, body) {
       );
     }
   }
+
 
   const projectedMembers = [...projectedExisting, ...newMembers];
   const limit = effectiveGuestLimit(event, existing);
@@ -2711,6 +3288,7 @@ async function submitListRsvp(env, event, body) {
   );
   const confirmedCount = confirmedMembers.length;
 
+
   if (listBehavior === "flexible" && typeLimits.active) {
     const confirmedAdults = confirmedMembers.filter(
       (member) => member.person_type === "adult"
@@ -2719,12 +3297,14 @@ async function submitListRsvp(env, event, body) {
       (member) => member.person_type === "child"
     ).length;
 
+
     if (confirmedAdults > typeLimits.adults) {
       throw new HttpError(
         400,
         `Esta confirmação permite no máximo ${typeLimits.adults} adulto(s).`
       );
     }
+
 
     if (confirmedChildren > typeLimits.children) {
       throw new HttpError(
@@ -2734,6 +3314,7 @@ async function submitListRsvp(env, event, body) {
     }
   }
 
+
   if (listBehavior === "flexible" && limit && confirmedCount > limit) {
     throw new HttpError(
       400,
@@ -2741,8 +3322,10 @@ async function submitListRsvp(env, event, body) {
     );
   }
 
+
   const currentTime = now();
   const statements = [];
+
 
   for (const member of existing.members) {
     if (removeIds.has(member.id)) {
@@ -2754,10 +3337,13 @@ async function submitListRsvp(env, event, body) {
         `).bind(currentTime, currentTime, member.id, existing.id, event.id)
       );
 
+
       continue;
     }
 
+
     const projected = projectedExisting.find((item) => item.id === member.id);
+
 
     statements.push(
       env.DB.prepare(`
@@ -2774,7 +3360,9 @@ async function submitListRsvp(env, event, body) {
     );
   }
 
+
   let sortOrder = existing.members.length;
+
 
   for (const member of newMembers) {
     statements.push(
@@ -2810,14 +3398,17 @@ async function submitListRsvp(env, event, body) {
     );
   }
 
+
   if (statements.length) {
     await env.DB.batch(statements);
   }
+
 
   const groupStatus = deriveGroupStatus(
     projectedMembers,
     familyFallback || existing.response_status
   );
+
 
   await env.DB.prepare(`
     UPDATE guests
@@ -2852,18 +3443,23 @@ async function submitListRsvp(env, event, body) {
     )
     .run();
 
+
   return getGuest(env, event.id, existing.id);
 }
 
+
 async function submitFreeRsvp(env, event, body) {
   const primaryName = String(body.primary_name || "").trim();
+
 
   if (!primaryName) {
     throw new HttpError(400, "Informe seu nome.");
   }
 
+
   const responseStatus = allowedPublicResponse(body.response_status);
   const normalized = normalizeName(primaryName);
+
 
   const existingRow = await env.DB.prepare(`
     SELECT *
@@ -2877,18 +3473,24 @@ async function submitFreeRsvp(env, event, body) {
     .bind(event.id, normalized)
     .first();
 
+
   const existing = existingRow ? await hydrateGuest(env, existingRow) : null;
+
 
   let members;
 
+
   if (responseStatus === "yes") {
     members = normalizePublicFreeMembers(body.members);
+
 
     if (!members.length) {
       throw new HttpError(400, "Informe pelo menos uma pessoa que irá à festa.");
     }
 
+
     const limit = Number(event.max_people_per_rsvp || 0) || null;
+
 
     if (limit && members.length > limit) {
       throw new HttpError(
@@ -2908,6 +3510,7 @@ async function submitFreeRsvp(env, event, body) {
       : [];
   }
 
+
   const payload = {
     ...body,
     primary_name: primaryName,
@@ -2915,13 +3518,16 @@ async function submitFreeRsvp(env, event, body) {
     members,
   };
 
+
   let guest;
+
 
   if (existing) {
     guest = await updateGuest(env, event, existing.id, payload);
   } else {
     guest = await createGuest(env, event, payload, "public");
   }
+
 
   await env.DB.prepare(`
     UPDATE guests
@@ -2931,11 +3537,14 @@ async function submitFreeRsvp(env, event, body) {
     .bind(now(), now(), guest.id, event.id)
     .run();
 
+
   return getGuest(env, event.id, guest.id);
 }
 
+
 function normalizePublicNewMembers(value) {
   if (!Array.isArray(value)) return [];
+
 
   return value
     .map((item) => ({
@@ -2947,8 +3556,10 @@ function normalizePublicNewMembers(value) {
     .slice(0, 100);
 }
 
+
 function normalizePublicFreeMembers(value) {
   if (!Array.isArray(value)) return [];
+
 
   return value
     .map((item) => ({
@@ -2962,6 +3573,7 @@ function normalizePublicFreeMembers(value) {
     .slice(0, 100);
 }
 
+
 function guestTypeLimits(guest) {
   const adults =
     guest?.max_adults_allowed === null ||
@@ -2970,6 +3582,7 @@ function guestTypeLimits(guest) {
       ? null
       : Number(guest.max_adults_allowed);
 
+
   const children =
     guest?.max_children_allowed === null ||
     guest?.max_children_allowed === undefined ||
@@ -2977,11 +3590,13 @@ function guestTypeLimits(guest) {
       ? null
       : Number(guest.max_children_allowed);
 
+
   const active =
     Number.isFinite(adults) &&
     adults >= 0 &&
     Number.isFinite(children) &&
     children >= 0;
+
 
   return {
     active,
@@ -2989,6 +3604,7 @@ function guestTypeLimits(guest) {
     children: active ? children : null,
   };
 }
+
 
 function validateGuestTypeLimits({
   maxPeopleAllowed,
@@ -2998,6 +3614,7 @@ function validateGuestTypeLimits({
   const hasAdultLimit = maxAdultsAllowed !== null;
   const hasChildLimit = maxChildrenAllowed !== null;
 
+
   if (hasAdultLimit !== hasChildLimit) {
     throw new HttpError(
       400,
@@ -3005,11 +3622,14 @@ function validateGuestTypeLimits({
     );
   }
 
+
   if (!hasAdultLimit) {
     return maxPeopleAllowed;
   }
 
+
   const total = maxAdultsAllowed + maxChildrenAllowed;
+
 
   if (total < 1) {
     throw new HttpError(
@@ -3019,20 +3639,26 @@ function validateGuestTypeLimits({
   }
 
 
+
+
   return total;
 }
+
 
 function effectiveGuestLimit(event, guest) {
   const guestLimit = Number(guest?.max_people_allowed || 0);
   if (guestLimit > 0) return guestLimit;
 
+
   const eventLimit = Number(event?.max_people_per_rsvp || 0);
   return eventLimit > 0 ? eventLimit : null;
 }
 
+
 // =========================================================
 // AUDIT
 // =========================================================
+
 
 async function audit(
   env,
@@ -3066,15 +3692,18 @@ async function audit(
   }
 }
 
+
 // =========================================================
 // ADMIN SESSION
 // =========================================================
+
 
 async function createAdminSession(env) {
   const expires = Math.floor(Date.now() / 1000) + 60 * 60 * 24;
   const payload = `admin.${expires}`;
   const signature = await sign(payload, env.SESSION_SECRET);
   const token = `${payload}.${signature}`;
+
 
   return [
     `libri_admin=${token}`,
@@ -3086,20 +3715,26 @@ async function createAdminSession(env) {
   ].join("; ");
 }
 
+
 async function isAdmin(request, env) {
   if (!env.SESSION_SECRET) return false;
+
 
   const cookies = parseCookies(request.headers.get("cookie") || "");
   const token = cookies.libri_admin;
 
+
   if (!token) return false;
+
 
   const parts = token.split(".");
   if (parts.length !== 3) return false;
 
+
   const role = parts[0];
   const expires = Number(parts[1]);
   const signature = parts[2];
+
 
   if (
     role !== "admin" ||
@@ -3109,9 +3744,11 @@ async function isAdmin(request, env) {
     return false;
   }
 
+
   const expected = await sign(`${role}.${expires}`, env.SESSION_SECRET);
   return safeEqual(signature, expected);
 }
+
 
 async function sign(value, secret) {
   const key = await crypto.subtle.importKey(
@@ -3122,18 +3759,22 @@ async function sign(value, secret) {
     ["sign"]
   );
 
+
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
     new TextEncoder().encode(value)
   );
 
+
   return base64Url(new Uint8Array(signature));
 }
+
 
 // =========================================================
 // CSV
 // =========================================================
+
 
 function csvResponse(guests, filename, language = "pt-BR") {
   const en = language === "en";
@@ -3143,16 +3784,19 @@ function csvResponse(guests, filename, language = "pt-BR") {
       : ["Responsável","Família / grupo","Status","Pessoas confirmadas","Adultos","Crianças","Limite total","Limite adultos","Limite crianças","Telefone","Restrição alimentar","Observações","Mensagem carinhosa","Origem","Respondido em"],
   ];
 
+
   for (const guest of guests) {
     const adults = guest.members
       .filter((member) => member.person_type === "adult")
       .map((member) => `${member.name} (${attendanceLabel(member.attendance_status, language)})`)
       .join(" | ");
 
+
     const children = guest.members
       .filter((member) => member.person_type === "child")
       .map((member) => `${member.name} (${attendanceLabel(member.attendance_status, language)})`)
       .join(" | ");
+
 
     rows.push([
       guest.primary_name,
@@ -3173,11 +3817,13 @@ function csvResponse(guests, filename, language = "pt-BR") {
     ]);
   }
 
+
   const csv =
     "\uFEFF" +
     rows
       .map((row) => row.map(csvCell).join(";"))
       .join("\r\n");
+
 
   return new Response(csv, {
     headers: {
@@ -3188,9 +3834,11 @@ function csvResponse(guests, filename, language = "pt-BR") {
   });
 }
 
+
 function csvCell(value) {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
+
 
 function attendanceLabel(value, language = "pt-BR") {
   const en = language === "en";
@@ -3199,6 +3847,7 @@ function attendanceLabel(value, language = "pt-BR") {
   return en ? "pending" : "aguardando";
 }
 
+
 function statusLabelText(value, language = "pt-BR") {
   const en = language === "en";
   if (value === "yes") return en ? "Confirmed" : "Confirmado";
@@ -3206,15 +3855,19 @@ function statusLabelText(value, language = "pt-BR") {
   return en ? "Pending" : "Pendente";
 }
 
+
 // =========================================================
 // SERIALIZATION
 // =========================================================
 
+
 function serializeEvent(row) {
   if (!row) return null;
 
+
   const availability = getRsvpAvailability(row);
   const appearance = normalizeAppearance(safeJson(row.appearance_settings, {}));
+
 
   return {
     id: row.id,
@@ -3248,8 +3901,10 @@ function serializeEvent(row) {
   };
 }
 
+
 function publicEvent(row) {
   const event = serializeEvent(row);
+
 
   return {
     id: event.id,
@@ -3274,10 +3929,12 @@ function publicEvent(row) {
   };
 }
 
+
 function serializeGuestRow(row, members) {
   const confirmedMembers = members.filter(
     (member) => member.attendance_status === "yes"
   );
+
 
   return {
     id: row.id,
@@ -3320,6 +3977,7 @@ function serializeGuestRow(row, members) {
   };
 }
 
+
 function serializeMember(row) {
   return {
     id: row.id,
@@ -3331,6 +3989,7 @@ function serializeMember(row) {
     sort_order: Number(row.sort_order || 0),
   };
 }
+
 
 function serializeAudit(row) {
   return {
@@ -3344,9 +4003,11 @@ function serializeAudit(row) {
   };
 }
 
+
 // =========================================================
 // NORMALIZATION
 // =========================================================
+
 
 function normalizeExtraFields(fields) {
   return {
@@ -3357,8 +4018,10 @@ function normalizeExtraFields(fields) {
   };
 }
 
+
 function normalizeAppearance(value) {
   const source = value && typeof value === "object" ? value : {};
+
 
   return {
     background_color: safeColor(source.background_color, DEFAULT_APPEARANCE.background_color),
@@ -3398,10 +4061,12 @@ function normalizeAppearance(value) {
   };
 }
 
+
 function normalizePublicTexts(value, language = "pt-BR") {
   const source = value && typeof value === "object" ? value : {};
   const defaults = language === "en" ? DEFAULT_PUBLIC_TEXTS_EN : DEFAULT_PUBLIC_TEXTS;
   const result = {};
+
 
   for (const [key, fallback] of Object.entries(defaults)) {
     const candidate = source[key];
@@ -3410,26 +4075,33 @@ function normalizePublicTexts(value, language = "pt-BR") {
       : String(candidate).trim().slice(0, key.includes("message") || key === "intro" ? 500 : 120) || fallback;
   }
 
+
   return result;
 }
+
 
 function normalizeClientPermissions(value) {
   const source = value && typeof value === "object" ? value : {};
   const result = {};
 
+
   for (const [key, fallback] of Object.entries(DEFAULT_CLIENT_PERMISSIONS)) {
     result[key] = source[key] === undefined ? fallback : Boolean(source[key]);
   }
 
+
   return result;
 }
+
 
 function normalizeManagedMembers(value, fallbackStatus = "pending") {
   if (!Array.isArray(value)) return [];
 
+
   const defaultAttendance = normalizeAttendanceStatus(
     fallbackStatus === "yes" || fallbackStatus === "no" ? fallbackStatus : "pending"
   );
+
 
   return value
     .map((item) => ({
@@ -3445,71 +4117,88 @@ function normalizeManagedMembers(value, fallbackStatus = "pending") {
     .slice(0, 100);
 }
 
+
 function normalizeAttendanceStatus(value) {
   const status = String(value || "pending").toLowerCase();
   return ["yes", "no", "pending"].includes(status) ? status : "pending";
 }
+
 
 function deriveGroupStatus(members, fallback = "pending") {
   if ((members || []).some((member) => member.attendance_status === "yes")) {
     return "yes";
   }
 
+
   if ((members || []).some((member) => member.attendance_status === "pending")) {
     return "pending";
   }
+
 
   if ((members || []).length && (members || []).every((member) => member.attendance_status === "no")) {
     return "no";
   }
 
+
   return allowedStatus(fallback);
 }
+
 
 function countMembers(members, type) {
   return (members || []).filter((member) => member.person_type === type).length;
 }
+
 
 function allowedStatus(value) {
   const status = String(value || "pending").toLowerCase();
   return ["yes", "no", "pending"].includes(status) ? status : "pending";
 }
 
+
 function allowedPublicResponse(value) {
   const status = String(value || "").toLowerCase();
+
 
   if (!['yes', 'no'].includes(status)) {
     throw new HttpError(400, "Escolha se poderá comparecer.");
   }
 
+
   return status;
 }
+
 
 function normalizeBackgroundType(value) {
   const type = String(value || "none").toLowerCase();
   return ["none", "image", "video"].includes(type) ? type : "none";
 }
 
+
 function normalizeListBehavior(value) {
   return value === "flexible" ? "flexible" : "strict";
 }
 
+
 function requireClientPermission(event, key) {
   const permissions = normalizeClientPermissions(safeJson(event.client_permissions, {}));
+
 
   if (!permissions[key]) {
     throw new HttpError(403, "Esta função está bloqueada para o painel da cliente.");
   }
 }
 
+
 // =========================================================
 // UTILS
 // =========================================================
+
 
 async function uniqueSlug(env, title) {
   const base = slugify(title) || "evento";
   let slug = base;
   let number = 1;
+
 
   while (true) {
     const exists = await env.DB.prepare(`
@@ -3518,12 +4207,15 @@ async function uniqueSlug(env, title) {
       .bind(slug)
       .first();
 
+
     if (!exists) return slug;
+
 
     number += 1;
     slug = `${base}-${number}`;
   }
 }
+
 
 function slugify(value) {
   return String(value || "")
@@ -3535,6 +4227,7 @@ function slugify(value) {
     .slice(0, 70);
 }
 
+
 function normalizeName(value) {
   return String(value || "")
     .normalize("NFD")
@@ -3545,6 +4238,7 @@ function normalizeName(value) {
     .trim();
 }
 
+
 function normalizeOptionalInteger(value, min, max) {
   if (
     value === null ||
@@ -3554,14 +4248,17 @@ function normalizeOptionalInteger(value, min, max) {
     return null;
   }
 
+
   return integerBetween(value, min, max);
 }
+
 
 function integerBetween(value, min, max) {
   const number = Number.parseInt(value, 10);
   if (!Number.isFinite(number)) return min;
   return Math.min(max, Math.max(min, number));
 }
+
 
 function numberBetween(value, min, max, fallback) {
   if (value === null || value === undefined || value === "") return fallback;
@@ -3570,10 +4267,12 @@ function numberBetween(value, min, max, fallback) {
   return Math.min(max, Math.max(min, number));
 }
 
+
 function safeColor(value, fallback) {
   const color = String(value || "");
   return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
 }
+
 
 function normalizeOptionalUrl(value) {
   if (
@@ -3584,8 +4283,10 @@ function normalizeOptionalUrl(value) {
     return null;
   }
 
+
   const text = String(value).trim();
   let url;
+
 
   try {
     url = new URL(text);
@@ -3593,15 +4294,19 @@ function normalizeOptionalUrl(value) {
     throw new HttpError(400, "A URL informada não é válida.");
   }
 
+
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new HttpError(400, "A mídia precisa usar um endereço http ou https.");
   }
 
+
   return url.toString();
 }
 
+
 function safeOptionalStoredUrl(value) {
   if (!value) return "";
+
 
   try {
     const url = new URL(String(value));
@@ -3610,13 +4315,16 @@ function safeOptionalStoredUrl(value) {
     }
   } catch {}
 
+
   return "";
 }
+
 
 function cleanOptionalText(value, maxLength) {
   if (value === undefined || value === null) return null;
   const text = String(value).trim();  return text ? text.slice(0, maxLength) : null;
 }
+
 
 function cleanNullable(value) {
   if (value === undefined || value === null) return null;
@@ -3624,9 +4332,11 @@ function cleanNullable(value) {
   return text ? text : null;
 }
 
+
 function safeJson(value, fallback) {
   if (value === null || value === undefined || value === "") return fallback;
   if (typeof value === "object") return value;
+
 
   try {
     return JSON.parse(value);
@@ -3635,6 +4345,7 @@ function safeJson(value, fallback) {
   }
 }
 
+
 function sanitizeMetadataText(value, maxLength) {
   return String(value || "")
     .replace(/[\u0000-\u001F\u007F]/g, " ")
@@ -3642,15 +4353,18 @@ function sanitizeMetadataText(value, maxLength) {
     .slice(0, maxLength);
 }
 
+
 function randomToken() {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return base64Url(bytes);
 }
 
+
 function base64Url(bytes) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
+
 
   return btoa(binary)
     .replace(/\+/g, "-")
@@ -3658,44 +4372,56 @@ function base64Url(bytes) {
     .replace(/=+$/g, "");
 }
 
+
 function safeEqual(a, b) {
   if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) {
     return false;
   }
 
+
   let diff = 0;
+
 
   for (let index = 0; index < a.length; index++) {
     diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
   }
 
+
   return diff === 0;
 }
+
 
 function parseCookies(header) {
   const result = {};
 
+
   for (const part of header.split(";")) {
     const index = part.indexOf("=");
     if (index === -1) continue;
+
 
     const key = part.slice(0, index).trim();
     const value = part.slice(index + 1).trim();
     result[key] = value;
   }
 
+
   return result;
 }
 
+
 function hasDeadlinePassed(deadline) {
   if (!deadline) return false;
+
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(deadline))) {
     return false;
   }
 
+
   return dateInTimeZone(RSVP_TIME_ZONE) > deadline;
 }
+
 
 function dateInTimeZone(timeZone) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -3705,18 +4431,23 @@ function dateInTimeZone(timeZone) {
     day: "2-digit",
   }).formatToParts(new Date());
 
+
   const values = {};
+
 
   for (const part of parts) {
     if (part.type !== "literal") values[part.type] = part.value;
   }
 
+
   return `${values.year}-${values.month}-${values.day}`;
 }
+
 
 function now() {
   return new Date().toISOString();
 }
+
 
 async function bodyJson(request) {
   try {
@@ -3725,6 +4456,7 @@ async function bodyJson(request) {
     return {};
   }
 }
+
 
 function json(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {
@@ -3736,6 +4468,7 @@ function json(data, status = 200, headers = {}) {
   });
 }
 
+
 class HttpError extends Error {
   constructor(status, message) {
     super(message);
@@ -3743,10 +4476,12 @@ class HttpError extends Error {
   }
 }
 
+
 const LIBRI_INVITATION_FRAME_ORIGINS = [
   "https://libriconvites.com.br",
   "https://www.libriconvites.com.br",
 ];
+
 
 function setFrameAncestors(headers, value) {
   const current = headers.get("content-security-policy") || "";
@@ -3756,29 +4491,36 @@ function setFrameAncestors(headers, value) {
     .filter(Boolean)
     .filter((part) => !/^frame-ancestors\b/i.test(part));
 
+
   directives.push(`frame-ancestors ${value}`);
   headers.set("content-security-policy", directives.join("; "));
 }
 
+
 function withRsvpFramePolicy(response, request) {
   const url = new URL(request.url);
+
 
   if (!/^\/e\/[^/]+\/?$/.test(url.pathname)) {
     return response;
   }
 
+
   const embed = url.searchParams.get("embed") === "1";
+
 
   // Fluxo normal do RSVP deve permanecer 100% intocado.
   if (!embed) {
     return response;
   }
 
+
   const headers = new Headers(response.headers);
   headers.delete("x-frame-options");
   setFrameAncestors(headers, LIBRI_INVITATION_FRAME_ORIGINS.join(" "));
   headers.set("x-content-type-options", "nosniff");
   headers.set("x-robots-tag", "noindex, nofollow, noarchive");
+
 
   return new Response(response.body, {
     status: response.status,
@@ -3787,21 +4529,25 @@ function withRsvpFramePolicy(response, request) {
   });
 }
 
+
 async function serveApp(request, env) {
   if (!env.ASSETS) {
     return new Response("Static Assets não configurado.", { status: 500 });
   }
 
+
   const response = await env.ASSETS.fetch(request);
+
 
   if (response.status !== 404) {
     return withRsvpFramePolicy(response, request);
   }
 
+
   const url = new URL(request.url);
   url.pathname = "/index.html";
+
 
   const fallback = await env.ASSETS.fetch(new Request(url.toString(), request));
   return withRsvpFramePolicy(fallback, request);
 }
-
