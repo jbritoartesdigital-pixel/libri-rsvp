@@ -2412,22 +2412,19 @@ function normalizeCreationRequestId(value) {
   return requestId;
 }
 
-async function getGuestByCreationRequestId(env, eventId, creationRequestId) {
-  if (!creationRequestId) return null;
+async function guestIdFromCreationRequest(eventId, creationRequestId) {
+  const source = `${eventId}:${creationRequestId}`;
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(source)
+  );
 
-  const row = await env.DB.prepare(`
-    SELECT *
-    FROM guests
-    WHERE event_id = ?
-      AND creation_request_id = ?
-      AND deleted_at IS NULL
-    LIMIT 1
-  `)
-    .bind(eventId, creationRequestId)
-    .first();
+  const hex = [...new Uint8Array(digest)]
+    .slice(0, 16)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 
-  if (!row) return null;
-  return hydrateGuest(env, row);
+  return `req_${hex}`;
 }
 
 function isUniqueConstraintError(error) {
@@ -2455,19 +2452,18 @@ async function createGuest(env, event, body, source) {
     body.creation_request_id
   );
 
+  const id = creationRequestId
+    ? await guestIdFromCreationRequest(event.id, creationRequestId)
+    : crypto.randomUUID();
+
   if (creationRequestId) {
-    const existingRequest = await getGuestByCreationRequestId(
-      env,
-      event.id,
-      creationRequestId
-    );
+    const existingRequest = await getGuest(env, event.id, id);
 
     if (existingRequest) {
       return existingRequest;
     }
   }
 
-  const id = crypto.randomUUID();
   const members = normalizeManagedMembers(body.members, body.response_status);
   const status = deriveGroupStatus(members, allowedStatus(body.response_status));
   const createdAt = now();
@@ -2506,11 +2502,10 @@ async function createGuest(env, event, body, source) {
         responded_at,
         created_at,
         updated_at,
-        deleted_at,
-        creation_request_id
+        deleted_at
       )
       VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL
       )
     `).bind(
       id,
@@ -2533,8 +2528,7 @@ async function createGuest(env, event, body, source) {
       maxChildrenAllowed,
       status === "pending" ? null : createdAt,
       createdAt,
-      createdAt,
-      creationRequestId
+      createdAt
     ),
   ];
 
@@ -2578,11 +2572,7 @@ async function createGuest(env, event, body, source) {
     await env.DB.batch(statements);
   } catch (error) {
     if (creationRequestId && isUniqueConstraintError(error)) {
-      const replay = await getGuestByCreationRequestId(
-        env,
-        event.id,
-        creationRequestId
-      );
+      const replay = await getGuest(env, event.id, id);
 
       if (replay) {
         return replay;
@@ -2594,6 +2584,7 @@ async function createGuest(env, event, body, source) {
 
   return getGuest(env, event.id, id);
 }
+
 
 async function updateGuest(env, event, guestId, body) {
   const existing = await getGuest(env, event.id, guestId);
