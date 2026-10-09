@@ -8,13 +8,14 @@ function loadDecoder(){
  }).catch(e=>{decoderPromise=null;throw e;});
  return decoderPromise;
 }
-export function extractQrToken(value){
+export function extractQrToken(value,origin=globalThis.location?.origin){
  const raw=String(value||'').trim();
  if(!raw)return '';
  if(!raw.includes('/')&&!raw.includes(':'))return /^[A-Za-z0-9_-]{20,220}$/.test(raw)?raw:'';
  try{
-  const u=new URL(raw,location.origin);
-  if(u.origin!==location.origin)return '';
+  if(!origin)return '';
+  const u=new URL(raw,origin);
+  if(u.origin!==origin)return '';
   const m=u.pathname.match(/^\/qr\/([A-Za-z0-9_-]{20,220})\/?$/);
   return m?m[1]:'';
  }catch{return '';}
