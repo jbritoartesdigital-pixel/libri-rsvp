@@ -106,12 +106,12 @@ async function readExcel(file){
  }
  return groupRows(rows);
 }
-async function readPDF(file){
- // PDF.js executes client side. The guest file stays on this device until the user confirms importing.
+async function readPDF(file,options={}){
+ // PDF.js and OCR execute locally. Guest data is transmitted only after explicit import.
  const lib=await import('/vendor/pdf.min.mjs');
  lib.GlobalWorkerOptions.workerSrc='/vendor/pdf.worker.min.mjs';
  const job=lib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false}),doc=await job.promise;
- let rows=[];
+ let rows=[],ocr=null;
  try{
   if(doc.numPages>40)throw Error('PDF com muitas páginas. Divida a lista.');
   for(let p=1;p<=doc.numPages;p++){
@@ -129,25 +129,35 @@ async function readPDF(file){
     line.push(block.s);lastY=block.y;
    }
    if(line?.length)rows.push([line.join(' ').trim()]);
+   const chars=blocks.map(b=>b.s).join(' ').trim().length;
+   if(chars<20){
+    if(p>20)throw Error('PDF digitalizado com mais de 20 páginas. Divida o arquivo para evitar sobrecarga.');
+    if(!ocr){const {startLocalOCR}=await import('./ocr-local.js');ocr=await startLocalOCR({progress:options?.onProgress||(()=>{})});}
+    options?.onProgress?.('OCR: página '+p+' de '+doc.numPages);
+    const {scannedPdfPage}=await import('./ocr-local.js');
+    const recognized=await scannedPdfPage(page,ocr,{progress:options?.onProgress||(()=>{})});
+    // Confidence is informative; never treat OCR as authoritative.
+    if(recognized.text.trim())rows.push(...recognized.text.split(/\r?\n/).map(x=>[x.trim()]));
+   }
    rows.push([]);if(rows.length>4000)throw Error('PDF muito extenso.');
   }
- }finally{await doc.destroy();}
- if(!rows.some(r=>r.some(Boolean)))throw Error('Este PDF não contém texto selecionável. PDFs digitalizados precisam de OCR.');
+ }finally{await ocr?.terminate();await doc.destroy();}
+ if(!rows.some(r=>r.some(Boolean)))throw Error('Não foi possível reconhecer nomes neste PDF. Confira a digitalização e tente uma imagem mais nítida.');
  return groupRows(rows);
 }
-export async function parseGuestFile(file){
+export async function parseGuestFile(file,options={}){
  if(!file||file.size>8_000_000)throw Error('Use um arquivo de até 8 MB.');
  const name=file.name.toLowerCase();
  if(name.endsWith('.csv')||name.endsWith('.txt'))return readCsv(file);
  if(name.endsWith('.xlsx'))return readExcel(file);
- if(name.endsWith('.pdf'))return readPDF(file);
+ if(name.endsWith('.pdf'))return readPDF(file,options);
  throw Error('Use PDF com texto, Excel .xlsx ou CSV.');
 }
 export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,onSaved}){
  const base=role==='admin'?'/api/admin/events/'+eventId:'/api/client/'+encodeURIComponent(token);
- let groups=[],file=null,duplicates=new Set();
+ let groups=[],file=null,existingNames=new Map(),nameWarnings=[];
  const w=modal('Importar lista de convidados',
-  '<p>PDF, Excel (.xlsx) ou CSV. Os arquivos são analisados no navegador; nada é salvo antes da sua aprovação.</p>'+
+  '<p>PDF (inclusive digitalizado via OCR), Excel (.xlsx) ou CSV. O arquivo é analisado neste dispositivo, e você revisa as famílias antes de salvar. O OCR pode demorar e não garante nomes corretos.</p>'+
   '<div class="field"><label>Arquivo</label><input id="guestFile" type="file" accept=".pdf,.xlsx,.csv,.txt,application/pdf,text/csv"></div>'+
   '<div id="importStatus" class="notice">Selecione um arquivo para conferir famílias e integrantes.</div>'+
   '<div id="importPreview"></div><div class="actions" style="margin-top:16px">'+
@@ -155,22 +165,34 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   '<button id="markAdults" type="button" class="btn secondary" hidden>Classificar indefinidos como adultos</button></div>', '',true);
  const status=w.querySelector('#importStatus'),preview=w.querySelector('#importPreview'),submit=w.querySelector('#confirmImport'),fix=w.querySelector('#markAdults');
  const render=()=>{
+  nameWarnings=[];
+  const current=new Map();
+  groups.forEach((g,i)=>g.members.forEach((m,k)=>{
+   const key=fold(m.name).replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+   if(!key)return;
+   const found=existingNames.get(key)||[];
+   if(found.length)nameWarnings.push({i,k,name:m.name,details:'Já consta na lista: '+found.join(', ')});
+   const previous=current.get(key)||[];
+   if(previous.some(x=>x.i!==i))nameWarnings.push({i,k,name:m.name,details:'Também aparece em outra família deste arquivo'});
+   current.set(key,[...previous,{i,k}]);
+  }));
   const count=groups.reduce((n,g)=>n+g.members.length,0),unknown=groups.reduce((n,g)=>n+g.members.filter(m=>m.person_type==='unknown').length,0);
-  status.textContent=groups.length+' família(s), '+count+' pessoa(s). '+(unknown?unknown+' pessoa(s) ainda precisam de classificação.':'Revise os nomes e grupos antes de salvar.');
-  fix.hidden=!unknown;submit.disabled=!groups.length||unknown>0||groups.some(g=>!g.primary_name||!g.members.length)||groups.length>300;
+  status.textContent=groups.length+' família(s), '+count+' pessoa(s). '+(unknown?unknown+' pessoa(s) a classificar. ':'')+(nameWarnings.length?nameWarnings.length+' possível(is) nome(s) repetido(s): revise antes de importar.':'Revise os nomes antes de salvar.');
+  status.style.borderColor=nameWarnings.length?'#bf7233':'';
+  fix.hidden=!unknown;submit.disabled=!groups.length||unknown>0||nameWarnings.length>0||groups.some(g=>!g.primary_name||!g.members.length)||groups.length>300;
   preview.innerHTML=groups.map((g,i)=>'<section class="card panel" style="margin:12px 0" data-group="'+i+'"><label>Família / grupo <input class="family-label" value="'+esc(g.group_label)+'"></label><div class="import-members">'+g.members.map((m,k)=>
    '<div style="display:flex;gap:6px;align-items:center;margin:7px 0" data-member="'+k+'"><input style="flex:2;min-width:0" class="import-name" value="'+esc(m.name)+'">'+
    '<select class="import-kind"><option value="unknown" '+(m.person_type==='unknown'?'selected':'')+'>A conferir</option><option value="adult" '+(m.person_type==='adult'?'selected':'')+'>Adulto</option><option value="child" '+(m.person_type==='child'?'selected':'')+'>Criança</option></select>'+
    '<button type="button" class="btn secondary small remove-member">×</button></div>').join('')+
-   '</div><div class="actions"><button class="btn secondary small add-member" type="button">+ Integrante</button><button class="btn secondary small remove-family" type="button">Remover família</button></div></section>').join('');
+   '</div>'+nameWarnings.filter(w=>w.i===i).map(w=>'<div class="notice" style="margin:8px 0;color:#9c4b2b"><strong>Nome igual: '+esc(w.name)+'</strong><p>'+esc(w.details)+'</p></div>').join('')+'<div class="actions"><button class="btn secondary small add-member" type="button">+ Integrante</button><button class="btn secondary small remove-family" type="button">Remover família</button></div></section>').join('');
   preview.querySelectorAll('[data-group]').forEach(row=>{
    const idx=Number(row.dataset.group);
-   row.querySelector('.family-label').oninput=e=>{groups[idx].group_label=e.target.value;groups[idx].primary_name=groups[idx].members[0]?.name||'';};
+   row.querySelector('.family-label').onchange=e=>{groups[idx].group_label=e.target.value;groups[idx].primary_name=groups[idx].members[0]?.name||'';render();};
    row.querySelector('.remove-family').onclick=()=>{groups.splice(idx,1);render();};
    row.querySelector('.add-member').onclick=()=>{groups[idx].members.push({name:'',person_type:'unknown'});render();};
    row.querySelectorAll('[data-member]').forEach(el=>{
     const mi=Number(el.dataset.member);
-    el.querySelector('.import-name').oninput=e=>{groups[idx].members[mi].name=e.target.value;groups[idx].primary_name=groups[idx].members[0]?.name||'';};
+    el.querySelector('.import-name').onchange=e=>{groups[idx].members[mi].name=e.target.value;groups[idx].primary_name=groups[idx].members[0]?.name||'';render();};
     el.querySelector('.import-kind').onchange=e=>{groups[idx].members[mi].person_type=e.target.value;render();};
     el.querySelector('.remove-member').onclick=()=>{groups[idx].members.splice(mi,1);groups[idx].primary_name=groups[idx].members[0]?.name||'';render();};
    });
@@ -179,7 +201,18 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
  w.querySelector('#guestFile').onchange=async e=>{
   file=e.target.files?.[0];if(!file)return;
   status.textContent='Analisando arquivo…';submit.disabled=true;
-  try{groups=await parseGuestFile(file);if(!groups.length)throw Error('Nenhum nome foi reconhecido. Confira as colunas do arquivo.');render();}
+  try{
+   const prev=await api(base+'/guests?q=&status=');
+   existingNames=new Map();
+   for(const g of prev.guests||[])for(const m of g.members||[]){
+    const key=fold(m.name).replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+    const labels=existingNames.get(key)||new Set();labels.add(g.group_label||g.primary_name);existingNames.set(key,labels);
+   }
+   existingNames=new Map([...existingNames].map(([k,v])=>[k,[...v]]));
+   groups=await parseGuestFile(file,{onProgress:message=>{status.textContent=message;}});
+   if(!groups.length)throw Error('Nenhum nome foi reconhecido. Confira as colunas do arquivo.');
+   render();
+  }
   catch(err){groups=[];preview.innerHTML='';status.textContent=err.message;toast(err.message,true);}
  };
  fix.onclick=()=>{groups.forEach(g=>g.members.forEach(m=>{if(m.person_type==='unknown')m.person_type='adult';}));render();};
@@ -195,6 +228,7 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   }
   const rows=[...merged.values()].map(g=>({primary_name:g.members[0]?.name?.trim()||'',group_label:g.group_label,members:g.members,response_status:'pending'}));
   if(rows.some(g=>!g.primary_name||g.members.some(m=>!m.name||m.person_type==='unknown')))return toast('Revise os dados antes de importar.',true);
+  if(nameWarnings.length){toast('Corrija ou confira os nomes repetidos antes de importar.',true);return;}
   submit.disabled=true;
   try{
    const r=await api(base+'/import',{method:'POST',body:JSON.stringify({rows,file_name:file?.name||'Lista',source_type:file?.name.split('.').pop()||'arquivo'})});
