@@ -103,5 +103,6 @@ test('PDF textual mantém famílias declaradas e não interpreta título como co
  assert.equal(groups[0].group_label,'Família Silva');
  assert.equal(groups[0].members.length,2);
  assert.equal(groups[0].members[1].person_type,'child');
+ assert.equal(groups[0].members[1].name,'Beto Silva');
  assert.equal(groups[1].group_label,'Família Rocha');
 });
