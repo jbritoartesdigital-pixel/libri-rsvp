@@ -55,7 +55,7 @@ export async function guestExtraRoutes(request,env,url,api){
     event=await api.getEvent(env,decodeURIComponent(m[2]));
    }else{
     event=await api.getEventByClientToken(env,decodeURIComponent(m[3]));
-    if(event&&!event.client_permissions?.manage_guests)return json({error:'Sem permissão para importar.'},403);
+    if(event&&!JSON.parse(event.client_permissions||'{}').manage_guests)return json({error:'Sem permissão para importar.'},403);
    }
    if(!event)return json({error:'Evento indisponível.'},404);
    if(method==='GET'&&m[4]==='imports'){
