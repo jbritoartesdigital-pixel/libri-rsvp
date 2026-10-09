@@ -108,8 +108,8 @@ async function readExcel(file){
 }
 async function readPDF(file){
  // PDF.js executes client side. The guest file stays on this device until the user confirms importing.
- const lib=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
- lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+ const lib=await import('/vendor/pdf.min.mjs');
+ lib.GlobalWorkerOptions.workerSrc='/vendor/pdf.worker.min.mjs';
  const job=lib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false}),doc=await job.promise;
  let rows=[];
  try{
