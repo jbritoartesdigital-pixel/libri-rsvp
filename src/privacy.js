@@ -16,7 +16,9 @@ export function retentionEligibility(event,clock=new Date()){
  if(!Number.isFinite(due.getTime()))return {eligible:false,reason:'Data inválida.'};
  due.setUTCDate(due.getUTCDate()+days);
  const dueDate=due.toISOString().slice(0,10);
- const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(clock);
+ const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(clock);
+ const get=key=>parts.find(x=>x.type===key)?.value;
+ const today=get('year')+'-'+get('month')+'-'+get('day');
  if(today<dueDate)return {eligible:false,due_date:dueDate,reason:'Aguarde o prazo escolhido após o evento.'};
  if(event.status==='active'&&!event.archived_at)return {eligible:false,due_date:dueDate,reason:'Pause ou arquive o evento antes de eliminar os dados.'};
  if(event.guest_data_purged_at)return {eligible:false,due_date:dueDate,reason:'Os dados deste evento já foram eliminados.'};
