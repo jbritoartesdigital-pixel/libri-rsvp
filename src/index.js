@@ -1,6 +1,7 @@
 import {passkeyRoutes} from './passkeys.js';
 import {guestExtraRoutes,capacityCheck,queueWaitlist} from './guest-extras.js';
 import {qrRoutes,assignQr} from './checkin.js';
+import {privacyRoutes} from './privacy.js';
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -151,7 +152,8 @@ async function handleApi(request, env, url) {
   const extras={isAdmin,createAdminSession,getEvent,getEventByClientToken,bulkCreateGuests,submitListRsvp,submitFreeRsvp,assignQr,audit};
   const featureResponse=await passkeyRoutes(request,env,url,extras)
    ||await guestExtraRoutes(request,env,url,extras)
-   ||await qrRoutes(request,env,url,extras);
+   ||await qrRoutes(request,env,url,extras)
+   ||await privacyRoutes(request,env,url,extras);
   if(featureResponse)return featureResponse;
 
 
