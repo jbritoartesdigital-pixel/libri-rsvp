@@ -97,3 +97,11 @@ test('undo remove só grupos da importação que nunca foram confirmados ou edit
  assert(db.prepare("SELECT deleted_at FROM guests WHERE id='new0'").get().deleted_at);
  assert.equal(db.prepare("SELECT deleted_at FROM guests WHERE id='new1'").get().deleted_at,null);
 });
+test('PDF textual mantém famílias declaradas e não interpreta título como coluna',()=>{
+ const groups=groupRows([['Lista de convidados'],['Família Silva'],['Ana Silva'],['Beto Silva (criança)'],[],['Família Rocha'],['Carlos Rocha']]);
+ assert.equal(groups.length,2);
+ assert.equal(groups[0].group_label,'Família Silva');
+ assert.equal(groups[0].members.length,2);
+ assert.equal(groups[0].members[1].person_type,'child');
+ assert.equal(groups[1].group_label,'Família Rocha');
+});
