@@ -3538,3 +3538,10 @@ video[hidden] {
     text-align: center;
   }
 }
+
+/* Full imported guest names remain visible in the post-import roster on mobile. */
+.guest-member-name { white-space:normal; text-overflow:clip; overflow:visible; overflow-wrap:anywhere; line-height:1.4; }
+@media (max-width:700px) {
+ .guest-member { grid-template-columns:27px minmax(0,1fr); min-width:0; }
+ .guest-member > .badge { grid-column:2; justify-self:start; max-width:100%; white-space:normal; }
+}
