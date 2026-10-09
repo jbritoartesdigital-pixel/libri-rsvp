@@ -158,27 +158,48 @@ async function showAdminCheckin({base,api,modal,toast}){
  };
 }
 export async function receptionPage({token,api,app,toast}){
- const root=document.createElement('main');root.className='shell';app.innerHTML='';app.append(root);
+ let stream=null,running=false;
+ const root=document.createElement('main');
+ const stop=()=>{running=false;stream?.getTracks().forEach(t=>t.stop());stream=null;const video=root.querySelector('#staffVideo');if(video)video.hidden=true;const btn=root.querySelector('#staffStop');if(btn)btn.hidden=true;};root.className='shell';app.innerHTML='';app.append(root);
  const load=async()=>{
+  stop();
   try{
    const r=await api('/api/recepcao/'+encodeURIComponent(token));
    root.innerHTML='<section class="card panel"><h1>Recepção · '+safe(r.event.title)+'</h1><p>Entradas: '+r.checkins.length+'</p>'+
     '<input id="receptionSearch" placeholder="Buscar família ou convidado"><div id="receptionPeople">'+r.guests.filter(g=>g.response_status==='yes').map(g=>
-    '<div class="setting-card" data-search="'+safe((g.group_label||g.primary_name).toLowerCase())+'"><strong>'+safe(g.group_label||g.primary_name)+'</strong>'+
+    '<div class="setting-card" data-search="'+safe(((g.group_label||g.primary_name)+' '+r.members.filter(m=>m.guest_id===g.id).map(m=>m.name).join(' ')).toLowerCase())+'"><strong>'+safe(g.group_label||g.primary_name)+'</strong>'+
     (r.event.checkin_mode==='family'?'<button class="btn small entry" data-guest="'+safe(g.id)+'">Registrar família</button>':
      r.members.filter(m=>m.guest_id===g.id).map(m=>'<button class="btn small entry" data-guest="'+safe(g.id)+'" data-member="'+safe(m.id)+'">Entrada: '+safe(m.name)+'</button>').join(''))+'</div>').join('')+'</div>'+
-    '<label>Código QR<input id="receptionQr"></label><button id="receptionCode" class="btn secondary">Conferir e registrar código</button>'+
+    '<div class="actions"><button id="staffStart" class="btn">Abrir câmera QR</button><button id="staffStop" class="btn secondary" hidden>Parar câmera</button></div><video id="staffVideo" autoplay playsinline muted style="width:100%;max-height:260px" hidden></video>'+
+    '<label>Código QR<input id="receptionQr"></label><button id="receptionCode" class="btn secondary">Conferir código</button>'+
     '<div id="receptionConfirm"></div></section>';
    root.querySelector('#receptionSearch').oninput=e=>root.querySelectorAll('[data-search]').forEach(el=>el.hidden=!el.dataset.search.includes(e.target.value.toLowerCase()));
-   const check=async b=>{
-    if(!confirm('Registrar esta entrada?'))return;
+   const check=async(b,label='Registrar esta entrada?')=>{
+    if(!confirm(label))return;
     const result=await api('/api/recepcao/'+encodeURIComponent(token)+'/checkin',{method:'POST',body:JSON.stringify(b)});
     toast(result.already_checked_in?'Entrada já registrada.':'Entrada registrada.');await load();
    };
    root.querySelectorAll('.entry').forEach(b=>b.onclick=()=>check({guest_id:b.dataset.guest,member_id:b.dataset.member}).catch(e=>toast(e.message,true)));
-   root.querySelector('#receptionCode').onclick=()=>check({token:root.querySelector('#receptionQr').value.split('/').pop()}).catch(e=>toast(e.message,true));
+   const inspectCode=async value=>{
+    const code=String(value||'').trim().split('/').pop();
+    const info=await api('/api/q/'+encodeURIComponent(code));
+    if(info.checked_in)return toast('Essa entrada já foi registrada.',true);
+    return check({token:code},'Confirmar entrada de '+info.name+'?');
+   };
+   root.querySelector('#receptionCode').onclick=()=>inspectCode(root.querySelector('#receptionQr').value).catch(e=>toast(e.message,true));
+   root.querySelector('#staffStop').onclick=stop;
+   root.querySelector('#staffStart').onclick=async()=>{
+    if(!('BarcodeDetector'in window))return toast('Este navegador não tem leitura QR. Use a busca manual ou cole o código.',true);
+    try{
+     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+     const video=root.querySelector('#staffVideo');video.srcObject=stream;video.hidden=false;root.querySelector('#staffStop').hidden=false;
+     await video.play();running=true;const detector=new BarcodeDetector({formats:['qr_code']});
+     const loop=async()=>{if(!running||!root.isConnected)return stop();try{const codes=await detector.detect(video);if(codes.length){stop();await inspectCode(codes[0].rawValue);return;}}catch{}setTimeout(loop,280);};loop();
+    }catch(e){stop();toast('Não foi possível abrir a câmera.',true);}
+   };
   }catch(e){root.innerHTML='<section class="card panel"><h1>Acesso indisponível</h1><p>'+safe(e.message)+'</p></section>';}
  };
+ window.addEventListener('pagehide',stop,{once:true});
  await load();
 }
 export async function publicQrPage({code,api,app}){
