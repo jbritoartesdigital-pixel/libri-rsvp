@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/rsvp-import-passkeys-checkin-20261009
+      - fix/libri-mobile-cache-and-long-names-20261009
       - fix/mobile-import-checkin-layout-20261009
   workflow_dispatch:
 
