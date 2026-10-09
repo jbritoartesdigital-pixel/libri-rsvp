@@ -21,6 +21,7 @@ jobs:
       - name: Instalar dependências e testar
         run: |
           npm install --no-audit --no-fund
+          npm run vendor:pdf
           npm run check
           npm test
       - name: Aplicar migrations D1
