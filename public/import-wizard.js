@@ -162,11 +162,12 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
    '<div style="display:flex;gap:6px;align-items:center;margin:7px 0" data-member="'+k+'"><input style="flex:2;min-width:0" class="import-name" value="'+esc(m.name)+'">'+
    '<select class="import-kind"><option value="unknown" '+(m.person_type==='unknown'?'selected':'')+'>A conferir</option><option value="adult" '+(m.person_type==='adult'?'selected':'')+'>Adulto</option><option value="child" '+(m.person_type==='child'?'selected':'')+'>Criança</option></select>'+
    '<button type="button" class="btn secondary small remove-member">×</button></div>').join('')+
-   '</div><button class="btn secondary small remove-family" type="button">Remover família</button></section>').join('');
+   '</div><div class="actions"><button class="btn secondary small add-member" type="button">+ Integrante</button><button class="btn secondary small remove-family" type="button">Remover família</button></div></section>').join('');
   preview.querySelectorAll('[data-group]').forEach(row=>{
    const idx=Number(row.dataset.group);
    row.querySelector('.family-label').oninput=e=>{groups[idx].group_label=e.target.value;groups[idx].primary_name=groups[idx].members[0]?.name||'';};
    row.querySelector('.remove-family').onclick=()=>{groups.splice(idx,1);render();};
+   row.querySelector('.add-member').onclick=()=>{groups[idx].members.push({name:'',person_type:'unknown'});render();};
    row.querySelectorAll('[data-member]').forEach(el=>{
     const mi=Number(el.dataset.member);
     el.querySelector('.import-name').oninput=e=>{groups[idx].members[mi].name=e.target.value;groups[idx].primary_name=groups[idx].members[0]?.name||'';};
@@ -183,7 +184,16 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
  };
  fix.onclick=()=>{groups.forEach(g=>g.members.forEach(m=>{if(m.person_type==='unknown')m.person_type='adult';}));render();};
  submit.onclick=async()=>{
-  const rows=groups.map(g=>({primary_name:g.members[0].name.trim(),group_label:g.group_label.trim(),members:g.members.map(m=>({name:m.name.trim(),person_type:m.person_type})),response_status:'pending'}));
+  // Explicitly edited matching group names represent one family, not separate invitations.
+  const merged=new Map();
+  for(const g of groups){
+   const label=g.group_label.trim(),key=fold(label);
+   if(!merged.has(key))merged.set(key,{group_label:label,members:[]});
+   for(const m of g.members){
+    if(!merged.get(key).members.some(x=>fold(x.name)===fold(m.name)))merged.get(key).members.push({name:m.name.trim(),person_type:m.person_type});
+   }
+  }
+  const rows=[...merged.values()].map(g=>({primary_name:g.members[0]?.name?.trim()||'',group_label:g.group_label,members:g.members,response_status:'pending'}));
   if(rows.some(g=>!g.primary_name||g.members.some(m=>!m.name||m.person_type==='unknown')))return toast('Revise os dados antes de importar.',true);
   submit.disabled=true;
   try{
