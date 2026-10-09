@@ -3336,3 +3336,205 @@ input[type="range"] {
     box-shadow: none;
   }
 }
+
+/* Mobile usability: OCR review, check-in roster and waitlist control. */
+video[hidden] {
+  display: none !important;
+}
+
+.import-family {
+  min-width: 0;
+  margin: 12px 0;
+}
+.import-family > label,
+.import-member label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.import-family > label,
+.import-member label > span {
+  font-size: 13px;
+  font-weight: 700;
+}
+.import-members {
+  margin-top: 12px;
+}
+.import-member {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(125px, .42fr) auto;
+  gap: 10px;
+  align-items: end;
+  min-width: 0;
+  padding: 12px;
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .65);
+}
+.import-member input,
+.import-member select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.import-member .remove-member {
+  min-height: 44px;
+}
+
+.feature-waitlist-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  padding: 12px 0;
+  min-width: 0;
+}
+.feature-waitlist-toggle input[type="checkbox"] {
+  flex: 0 0 19px;
+  width: 19px;
+  min-width: 19px;
+  height: 19px;
+  min-height: 19px;
+  padding: 0;
+  margin: 2px 0 0;
+  accent-color: var(--brand);
+}
+.feature-waitlist-toggle span {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.checkin-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin: 13px 0 19px;
+}
+.checkin-stat {
+  min-width: 0;
+  min-height: 95px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(255, 253, 251, .9);
+}
+.checkin-stat small {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.checkin-stat strong {
+  font-size: 24px;
+  line-height: 1.1;
+}
+.checkin-family-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.checkin-family-card {
+  display: block;
+  min-width: 0;
+  padding: 15px;
+}
+.checkin-family-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.checkin-family-heading strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.checkin-person-list {
+  display: grid;
+  gap: 0;
+  margin-top: 10px;
+}
+.checkin-person-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.checkin-person-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.checkin-person-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.checkin-person-actions .btn {
+  white-space: normal;
+  line-height: 1.25;
+  min-width: 0;
+}
+.checkin-recent-row {
+  min-width: 0;
+}
+.checkin-recent-row strong,
+.checkin-reception-guest strong {
+  overflow-wrap: anywhere;
+}
+.checkin-reception-guest {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+@media (max-width: 700px) {
+  .import-member {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+  .import-member-name {
+    grid-column: 1 / -1;
+  }
+  .import-member-kind {
+    grid-column: 1;
+  }
+  .import-member .remove-member {
+    grid-column: 2;
+    align-self: end;
+  }
+  .checkin-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .checkin-person-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
+  }
+  .checkin-person-actions {
+    width: 100%;
+  }
+  .checkin-person-actions .btn {
+    flex: 1 1 auto;
+    min-height: 42px;
+  }
+  .checkin-recent-row,
+  .checkin-reception-guest {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .checkin-reception-guest .checkin-person-actions .btn {
+    text-align: center;
+  }
+}
