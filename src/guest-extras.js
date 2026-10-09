@@ -2,7 +2,7 @@ const json=(value,status=200)=>new Response(JSON.stringify(value),{status,header
 const query=(env,sql,...args)=>env.DB.prepare(sql).bind(...args);
 const stamp=()=>new Date().toISOString();
 const short=s=>String(s??'').trim().slice(0,150);
-const normalized=s=>short(s).toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+const normalized=s=>short(s).toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
 const parse=async req=>{const raw=await req.text();if(raw.length>130000)throw Error('Dados muito grandes.');return JSON.parse(raw);};
 const occupied=async(env,eventId,excludeId=null)=>{
  const r=await query(env,"SELECT COUNT(*) n FROM guest_members m JOIN guests g ON g.id=m.guest_id WHERE m.event_id=? AND m.deleted_at IS NULL AND g.deleted_at IS NULL AND m.attendance_status='yes' AND (? IS NULL OR m.guest_id<>?)",eventId,excludeId,excludeId).first();return Number(r.n||0);
