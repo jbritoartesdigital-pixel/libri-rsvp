@@ -26,7 +26,10 @@ export async function startUniversalQR({video,onRead,onError=()=>{},onStop=()=>{
  let stream,active=true,timer=null,busy=false,detector=null,decoder=null,nativeFailures=0;
  const stop=()=>{
   if(!active)return;active=false;if(timer!==null)clearTimeout(timer);
-  stream?.getTracks().forEach(t=>t.stop());video.pause();video.srcObject=null;onStop();
+  stream?.getTracks().forEach(t=>t.stop());video.pause();video.srcObject=null;
+  document.removeEventListener('visibilitychange',onVisibility);
+  window.removeEventListener('pagehide',onPageHide);
+  onStop();
  };
  const onPageHide=()=>stop();window.addEventListener('pagehide',onPageHide,{once:true});
  const onVisibility=()=>{if(document.visibilityState==='hidden')stop();};
@@ -45,6 +48,7 @@ export async function startUniversalQR({video,onRead,onError=()=>{},onStop=()=>{
   if(!ctx&&!detector)throw Error('Seu navegador não permite a leitura do QR.');
   const tick=async()=>{
    if(!active||busy)return;
+   if(!video.isConnected){stop();return;}
    busy=true;
    try{
     let scanned=null;
