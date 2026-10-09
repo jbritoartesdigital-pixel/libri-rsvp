@@ -73,11 +73,11 @@ export async function showImportHistory({base,api,modal,toast,onSaved}){
  });
 }
 export async function mountFeatureSettings({root,event,api,toast,modal}){
- const panel=document.createElement('section');panel.className='card panel';panel.style.marginTop='16px';panel.innerHTML=
+ const panel=document.createElement('section');panel.className='card panel qr-reception-settings';panel.style.marginTop='16px';panel.innerHTML=
  '<h3>Controle de vagas e entrada</h3><p>Capacidade geral, lista de espera e QR Code são opcionais.</p>'+
  '<div class="grid two"><label>Capacidade máxima da festa<input id="eventCapacity" type="number" min="1" placeholder="Sem limite"></label>'+
  '<label>Check-in<select id="checkinMode"><option value="off">Desativado</option><option value="family">Por família</option><option value="individual">Por pessoa</option></select></label></div>'+
- '<label><input type="checkbox" id="enableWaitlist"> Permitir lista de espera ao atingir a capacidade</label>'+
+ '<label class="qr-waitlist-toggle"><input type="checkbox" id="enableWaitlist"><span>Permitir lista de espera ao atingir a capacidade</span></label>'+
  '<div class="actions" style="margin:12px 0"><button class="btn" id="saveExtra">Salvar regras</button><button class="btn secondary" id="openCheckin">Abrir check-in</button><button class="btn secondary" id="openQueue">Lista de espera</button><button class="btn secondary" id="staffAccess">Acesso da recepção</button><button class="btn secondary" id="privacyCleanup">Privacidade após a festa</button></div><div id="extraDetail"></div>';
  root.append(panel);
  const base='/api/admin/events/'+event.id,data=await api(base+'/features'),rules=data.settings;
