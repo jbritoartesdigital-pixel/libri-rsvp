@@ -1,23 +1,57 @@
 name: Deploy Libri RSVP
 
+# Publish only the exact reviewed main merge. D1 migrations 0005/0006
+# were applied separately in the Cloudflare dashboard and verified.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'scripts/**'
+      - 'migrations/**'
+      - 'package.json'
+      - 'wrangler.jsonc'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: libri-rsvp-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Baixar projeto
-        uses: actions/checkout@v6
+      - name: Baixar o commit aprovado
+        uses: actions/checkout@v4
 
-      - name: Publicar no Cloudflare
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar dependências, validar e testar
+        run: |
+          npm install --no-audit --no-fund
+          npm run vendor:pdf
+          npm run check
+          npm test
+
+      - name: Conferir pacote Cloudflare sem publicar
+        run: npx wrangler deploy --dry-run --outdir /tmp/libri-rsvp-release
+
+      - name: Publicar Worker e arquivos estáticos
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4"
           command: deploy
+
+# IMPORTANT: This workflow never invokes D1 migration commands: the API token
+# can deploy Workers but cannot access D1. Migrations must be applied and
+# verified in the production D1 Console before this workflow is allowed to run.

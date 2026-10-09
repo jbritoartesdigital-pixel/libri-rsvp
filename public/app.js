@@ -1,3 +1,5 @@
+import {openGuestImport} from './import-wizard.js';
+import {passkeyLogin,passkeysModal,showImportHistory,mountFeatureSettings,receptionPage,publicQrPage} from './feature-ui.js';
 const app=document.querySelector("#app"),toastEl=document.querySelector("#toast"),path=location.pathname;
 let toastTimer,suggestTimer,appearanceDirty=false,activeInterfaceLanguage="pt-BR";
 
@@ -415,6 +417,8 @@ const loading=(lang=activeInterfaceLanguage)=>`<div class="card panel"><div clas
 
 
 if(path==="/admin"||path==="/admin/")adminApp();
+else if(path.startsWith("/recepcao/"))receptionPage({token:decodeURIComponent(path.split("/")[2]||""),api,app,toast});
+else if(path.startsWith("/qr/"))publicQrPage({code:decodeURIComponent(path.split("/")[2]||""),api,app});
 else if(path.startsWith("/cliente/"))clientApp(decodeURIComponent(path.split("/")[2]||""));
 else if(path.startsWith("/e/"))publicApp(decodeURIComponent(path.split("/")[2]||""));
 else home();
@@ -425,8 +429,9 @@ function home(){brand();app.innerHTML=`<main class="shell">${topbar()}<section c
 
 async function adminApp(){
  brand();
- app.innerHTML=`<main class="shell">${topbar()}<section class="card panel panel-narrow"><span class="eyebrow">Área administrativa</span><h1>Entrar na Libri</h1><form id="login"><div class="field"><label>Senha</label><input name="password" type="password" required></div><button class="btn block">Entrar</button></form></section></main>`;
+ app.innerHTML=`<main class="shell">${topbar()}<section class="card panel panel-narrow"><span class="eyebrow">Área administrativa</span><h1>Entrar na Libri</h1><form id="login"><div class="field"><label>Senha</label><input name="password" type="password" required></div><button class="btn block">Entrar</button></form><button class="btn secondary block" id="passkeyLogin" type="button" style="margin-top:10px">🔐 Entrar com digital</button></section></main>`;
  try{await api("/api/admin/me");return renderAdminDashboard()}catch{}
+ document.querySelector("#passkeyLogin").onclick=()=>passkeyLogin({api,toast,onSuccess:renderAdminDashboard});
  document.querySelector("#login").onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;try{await api("/api/admin/login",{method:"POST",body:JSON.stringify({password:new FormData(e.currentTarget).get("password")})});renderAdminDashboard()}catch(err){toast(err.message,true);b.disabled=false}};
 }
 
@@ -434,10 +439,11 @@ async function adminApp(){
 async function renderAdminDashboard(archived=false){
  brand();
  const d=await api(`/api/admin/events${archived?"?archived=1":""}`);
- app.innerHTML=`<main class="shell">${topbar(`<button class="btn secondary small" id="logout">Sair</button>`)}
+ app.innerHTML=`<main class="shell">${topbar(`<button class="btn secondary small" id="openPasskeys">Minha digital</button><button class="btn secondary small" id="logout">Sair</button>`)}
  <section class="card hero"><div><span class="chip">PAINEL LIBRI</span><h2>Seus eventos, sem caça ao tesouro.</h2><p>Confirmações, listas, mensagens e aparência em um só lugar.</p></div><button class="btn large" id="newEvent">+ Criar evento</button></section>
  <div class="section-title"><div><h2>${archived?"Eventos arquivados":"Eventos ativos"}</h2><span class="meta">${d.events.length} evento(s)</span></div><button class="btn secondary small" id="toggleArchived">${archived?"← Ativos":"Ver arquivados"}</button></div>
  <div class="events">${d.events.length?d.events.map(e=>eventCard(e,archived)).join(""):`<div class="empty">Nenhum evento aqui.</div>`}</div></main>`;
+ document.querySelector("#openPasskeys").onclick=()=>passkeysModal({api,modal,toast});
  document.querySelector("#logout").onclick=async()=>{await api("/api/admin/logout",{method:"POST",body:"{}"});adminApp()};
  document.querySelector("#newEvent").onclick=()=>eventModal();
  document.querySelector("#toggleArchived").onclick=()=>renderAdminDashboard(!archived);
@@ -512,7 +518,7 @@ function overview(root,e,s,info,role){
 async function guestsTab({root,event,role,eventId,token}){
  const L=role==="client"?eventLang(event):"pt-BR",p=safePerms(event),canManage=role==="admin"||p.manage_guests,canExport=role==="admin"||p.export_guests,base=role==="admin"?`/api/admin/events/${eventId}`:`/api/client/${encodeURIComponent(token)}`;
  root.innerHTML=`${event.rsvp_mode==="list"?`<section class="guide-card"><div class="guide-icon">✦</div><div><h3>${tr(L,"Lista fechada","Guest list")}</h3><p>${tr(L,"Cadastre cada adulto e criança pelo nome. Qualquer integrante poderá ser encontrado no convite.","Add every adult and child by name. Any family member can be found on the invitation.")}</p></div></section>`:""}
- <div class="section-title"><div><h2>${tr(L,"Convidados","Guests")}</h2><span class="meta">${tr(L,"Busca por família, responsável ou qualquer integrante.","Search by family, primary contact or any guest.")}</span></div><div class="actions">${canExport?`<button class="btn secondary small" id="export">${tr(L,"Exportar CSV","Export CSV")}</button><button class="btn secondary small" id="exportPdf">${tr(L,"Exportar PDF","Export PDF")}</button>`:""}${canManage?`<button class="btn secondary small" id="selectGuests">${tr(L,"Selecionar vários","Select multiple")}</button><button class="btn secondary small" id="bulk">${tr(L,"+ Adicionar vários","+ Add multiple")}</button><button class="btn" id="add">${tr(L,"+ Cadastrar convidado/família","+ Add guest/family")}</button>`:""}</div></div>
+ <div class="section-title"><div><h2>${tr(L,"Convidados","Guests")}</h2><span class="meta">${tr(L,"Busca por família, responsável ou qualquer integrante.","Search by family, primary contact or any guest.")}</span></div><div class="actions">${canExport?`<button class="btn secondary small" id="export">${tr(L,"Exportar CSV","Export CSV")}</button><button class="btn secondary small" id="exportPdf">${tr(L,"Exportar PDF","Export PDF")}</button>`:""}${canManage?`<button class="btn secondary small" id="selectGuests">${tr(L,"Selecionar vários","Select multiple")}</button><button class="btn secondary small" id="bulk">${tr(L,"+ Adicionar vários","+ Add multiple")}</button><button class="btn secondary small" id="fileImport">Importar PDF / Excel / CSV</button><button class="btn secondary small" id="importHistory">Desfazer importação</button><button class="btn" id="add">${tr(L,"+ Cadastrar convidado/família","+ Add guest/family")}</button>`:""}</div></div>
  <div class="toolbar"><div class="search-shell"><input id="search" placeholder="${tr(L,"Digite para buscar...","Type to search...")}" autocomplete="off"><button type="button" class="search-clear" id="clearSearch" aria-label="${tr(L,"Limpar busca","Clear search")}" title="${tr(L,"Limpar busca","Clear search")}" hidden>×</button></div><div class="segmented"><button class="active" data-filter=""><span>${tr(L,"Todos","All")}</span><b data-count="total">0</b></button><button data-filter="yes"><span>${tr(L,"Confirmados","Confirmed")}</span><b data-count="yes">0</b></button><button data-filter="pending"><span>${tr(L,"Aguardando","Pending")}</span><b data-count="pending">0</b></button><button data-filter="no"><span>${tr(L,"Não irão","Not attending")}</span><b data-count="no">0</b></button><button data-filter="duplicates"><span>${tr(L,"Possíveis duplicados","Possible duplicates")}</span><b data-count="duplicates">0</b></button></div></div>
  ${canManage?`<div class="bulk-selection" id="selectionBar" hidden><label class="bulk-selection-check"><input type="checkbox" id="selectVisible"> <span>${tr(L,"Selecionar todos exibidos","Select all shown")}</span></label><strong id="selectedCount">${tr(L,"0 selecionados","0 selected")}</strong><div class="actions"><button class="btn secondary small" type="button" id="selectCopies" hidden>${tr(L,"Selecionar repetições","Select copies")}</button><button class="btn danger small" type="button" id="deleteSelected" disabled>${tr(L,"Excluir selecionados","Delete selected")}</button><button class="btn secondary small" type="button" id="cancelSelection">${tr(L,"Cancelar","Cancel")}</button></div></div>`:""}
  <div id="guestList">${loading(L)}</div>`;
@@ -548,6 +554,8 @@ async function guestsTab({root,event,role,eventId,token}){
  if(canManage){
   root.querySelector("#add").onclick=()=>guestModal({event,role,eventId,token,onSaved:refresh});
   root.querySelector("#bulk").onclick=()=>bulkModal({event,role,eventId,token,onSaved:refresh});
+  root.querySelector("#fileImport").onclick=()=>openGuestImport({event,role,eventId,token,onSaved:refresh,api,toast,modal,esc});
+  root.querySelector("#importHistory").onclick=()=>showImportHistory({base,api,modal,toast,onSaved:refresh}).catch(e=>toast(e.message,true));
   root.querySelector("#selectGuests").onclick=()=>{selectionMode=true;selectedIds.clear();renderList()};
   root.querySelector("#cancelSelection").onclick=()=>{selectionMode=false;selectedIds.clear();renderList()};
   root.querySelector("#selectVisible").onchange=e=>{currentGuests.forEach(g=>e.target.checked?selectedIds.add(g.id):selectedIds.delete(g.id));renderList()};
@@ -930,6 +938,7 @@ function adminSettings(root,info){
  root.innerHTML=`<div class="grid two"><section class="card panel"><h3>Dados e regras</h3><div class="settings-list">${setting("Tipo",e.rsvp_mode==="list"?"Lista fechada":"Livre")}${setting("Comportamento",e.rsvp_mode==="list"?(e.list_behavior==="flexible"?"Flexível":"Estrita"):"Não se aplica")}${setting("Prazo",e.rsvp_deadline?fmtDate(e.rsvp_deadline):"Sem prazo")}${setting("Limite padrão",e.max_people_per_rsvp?`${e.max_people_per_rsvp} pessoa(s)`:"Sem limite")}</div><button class="btn" id="editSettings" style="margin-top:12px">Editar evento</button></section>
  <section class="card panel"><h3>Links</h3><div class="field"><label>Público</label><div class="codebox">${esc(info.public_url)}</div></div><div class="field"><label>Cliente</label><div class="codebox">${esc(info.client_url||"Indisponível")}</div></div><div class="actions"><button class="btn secondary small" id="cp">Copiar público</button><button class="btn secondary small" id="cc">Copiar cliente</button><button class="btn danger small" id="reset">Trocar link cliente</button></div></section></div>
  <section class="card panel" style="margin-top:14px"><h3>Ferramentas Libri</h3><div class="actions"><button class="btn secondary" id="dup">Duplicar evento</button><button class="btn secondary" id="history">Histórico</button><button class="btn secondary" id="trash">Lixeira</button>${!e.archived_at?`<button class="btn secondary" id="status">${e.status==="active"?"Pausar confirmações":"Reativar confirmações"}</button><button class="btn danger" id="archive">Arquivar</button>`:`<button class="btn" id="unarchive">Restaurar evento</button>`}</div></section>`;
+ mountFeatureSettings({root,event:e,api,toast,modal}).catch(err=>toast(err.message,true));
  root.querySelector("#editSettings").onclick=()=>eventModal(e);root.querySelector("#cp").onclick=()=>copy(info.public_url);root.querySelector("#cc").onclick=()=>copy(info.client_url);
  root.querySelector("#reset").onclick=async()=>{if(!confirm("O link privado atual deixará de funcionar. Continuar?"))return;try{const r=await api(`/api/admin/events/${e.id}/client-link/reset`,{method:"POST",body:"{}"});toast("Novo link criado.");copy(r.client_url);renderAdminEvent(e.id,"settings")}catch(x){toast(x.message,true)}};
  root.querySelector("#dup").onclick=async()=>{if(!confirm("Duplicar configurações e aparência sem convidados?"))return;try{const r=await api(`/api/admin/events/${e.id}/duplicate`,{method:"POST",body:"{}"});toast("Evento duplicado.");renderAdminEvent(r.event.id)}catch(x){toast(x.message,true)}};
@@ -1052,7 +1061,7 @@ function listRsvp(e,g){
   if(limit&&flex&&confirmed>limit){scrollToProblem(limitStatus);return toast(tr(L,`Limite de ${limit} pessoa(s), contando quem já está cadastrado.`,`Limit of ${limit} people, including pre-registered guests.`),true)}
   if(!responses.some(x=>x.attendance_status==="yes"||x.attendance_status==="no")&&!newMembers.length){scrollToProblem(root.querySelector(".public-family"));return toast(tr(L,"Marque quem vai ou não vai.","Select who is attending or not attending."),true)}
   const b=ev.submitter;b.disabled=true;
-  try{const r=await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",body:JSON.stringify({website:d.get("website"),guest_id:g.id,member_responses:responses,new_members:newMembers,phone:d.get("phone"),dietary:d.get("dietary"),notes:d.get("notes"),love_message:d.get("love_message")})}),yes=r.guest.members?.some(m=>m.attendance_status==="yes");success(e,yes?"yes":"no")}catch(x){toast(x.message,true);b.disabled=false}
+  try{const r=await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",body:JSON.stringify({website:d.get("website"),guest_id:g.id,member_responses:responses,new_members:newMembers,phone:d.get("phone"),dietary:d.get("dietary"),notes:d.get("notes"),love_message:d.get("love_message")})});if(r.waitlisted){root.innerHTML='<div class="success"><h2>Lista de espera</h2><p>'+esc(r.message)+'</p></div>';return;}const yes=r.guest.members?.some(m=>m.attendance_status==="yes");success(e,yes?"yes":"no",r.qr||[])}catch(x){toast(x.message,true);b.disabled=false}
  };
 }
 function freeRsvp(e){
@@ -1068,9 +1077,9 @@ function freeRsvp(e){
  root.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-c]").forEach(x=>x.classList.remove("active"));b.classList.add("active");companionStatus.value=b.dataset.c;if(companionSection)companionSection.style.display=b.dataset.c==="yes"?"":"none"});
  root.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-r]").forEach(x=>x.classList.remove("active"));b.classList.add("active");status.value=b.dataset.r;const yes=status.value==="yes";section.style.display=yes?"":"none";if(attendeeDietary)attendeeDietary.style.display=yes?"":"none";declineHint.style.display=yes?"none":"";if(yes)setTimeout(()=>{try{section.scrollIntoView({behavior:"smooth",block:"nearest"})}catch{}},80)});
  bindInvalidScroll(form);
- form.onsubmit=async ev=>{ev.preventDefault();const d=new FormData(form),primaryName=String(d.get("primary_name")||"").trim();if(!status.value){scrollToProblem(root.querySelector(".choice"));return toast(tr(L,"Escolha se você poderá comparecer.","Please choose whether you will attend."),true)}if(status.value==="yes"&&limit!==1&&!companionStatus?.value){scrollToProblem(root.querySelector("#companionChoice"));return toast(tr(L,"Informe se você vai levar acompanhante.","Please tell us whether you are bringing anyone."),true)}const companions=status.value==="yes"&&companionStatus?.value==="yes"&&mr?[...mr.querySelectorAll(".fname")].map(i=>({name:i.value.trim(),person_type:i.dataset.type,attendance_status:"yes"})).filter(x=>x.name):[];if(status.value==="yes"&&companionStatus?.value==="yes"&&!companions.length){scrollToProblem(companionSection);return toast(tr(L,"Adicione pelo menos um acompanhante.","Add at least one companion."),true)}const members=status.value==="yes"?[{name:primaryName,person_type:"adult",attendance_status:"yes"},...companions]:[];if(limit&&members.length>limit){scrollToProblem(section);return toast(tr(L,`Limite de ${limit} pessoa(s).`,`Limit of ${limit} people.`),true)}const b=ev.submitter;b.disabled=true;try{await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",body:JSON.stringify({creation_request_id:creationRequestId,website:d.get("website"),primary_name:primaryName,response_status:status.value,members,phone:d.get("phone"),dietary:status.value==="yes"?d.get("dietary"):"",notes:d.get("notes"),love_message:d.get("love_message")})});success(e,status.value)}catch(x){toast(x.message,true);b.disabled=false}};
+ form.onsubmit=async ev=>{ev.preventDefault();const d=new FormData(form),primaryName=String(d.get("primary_name")||"").trim();if(!status.value){scrollToProblem(root.querySelector(".choice"));return toast(tr(L,"Escolha se você poderá comparecer.","Please choose whether you will attend."),true)}if(status.value==="yes"&&limit!==1&&!companionStatus?.value){scrollToProblem(root.querySelector("#companionChoice"));return toast(tr(L,"Informe se você vai levar acompanhante.","Please tell us whether you are bringing anyone."),true)}const companions=status.value==="yes"&&companionStatus?.value==="yes"&&mr?[...mr.querySelectorAll(".fname")].map(i=>({name:i.value.trim(),person_type:i.dataset.type,attendance_status:"yes"})).filter(x=>x.name):[];if(status.value==="yes"&&companionStatus?.value==="yes"&&!companions.length){scrollToProblem(companionSection);return toast(tr(L,"Adicione pelo menos um acompanhante.","Add at least one companion."),true)}const members=status.value==="yes"?[{name:primaryName,person_type:"adult",attendance_status:"yes"},...companions]:[];if(limit&&members.length>limit){scrollToProblem(section);return toast(tr(L,`Limite de ${limit} pessoa(s).`,`Limit of ${limit} people.`),true)}const b=ev.submitter;b.disabled=true;try{const r=await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",body:JSON.stringify({creation_request_id:creationRequestId,website:d.get("website"),primary_name:primaryName,response_status:status.value,members,phone:d.get("phone"),dietary:status.value==="yes"?d.get("dietary"):"",notes:d.get("notes"),love_message:d.get("love_message")})});if(r.waitlisted){root.innerHTML='<div class="success"><h2>Lista de espera</h2><p>'+esc(r.message)+'</p></div>';return;}success(e,status.value,r.qr||[])}catch(x){toast(x.message,true);b.disabled=false}};
 }
-function success(e,status){
+function success(e,status,qr=[]){
  const t=safeTexts(e),a=safeAppearance(e),yes=status==="yes";
  const details=yes&&e.event_date
   ?`<div class="success-event-summary">
@@ -1086,7 +1095,7 @@ function success(e,status){
   :"";
 
 
- document.querySelector("#publicFlow").innerHTML=`<div class="success"><div class="bubble">${yes?"✓":"♡"}</div><h2>${esc(yes?t.success_title:t.decline_title)}</h2><p>${esc(yes?t.success_message:t.decline_message)}</p>${details}<div class="success-actions">${calendar}${back}</div></div>`;
+ document.querySelector("#publicFlow").innerHTML=`<div class="success"><div class="bubble">${yes?"✓":"♡"}</div><h2>${esc(yes?t.success_title:t.decline_title)}</h2><p>${esc(yes?t.success_message:t.decline_message)}</p>${details}<div class="success-actions">${calendar}${back}</div>${qr.length?`<div class="notice" style="margin-top:18px"><strong>QR de entrada</strong><p>Guarde seu QR para apresentar na recepção.</p>${qr.map(q=>`<div><strong>${esc(q.name)}</strong><a class="btn secondary block" href="${esc(q.url)}" target="_blank" rel="noopener">Abrir meu QR</a></div>`).join("")}</div>`:""}</div>`;
 
 
  const calendarBtn=document.querySelector("#successCalendar");

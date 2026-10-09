@@ -1,0 +1,29 @@
+name: Validate Libri RSVP features (no deploy)
+
+on:
+  push:
+    branches:
+      - feat/rsvp-import-passkeys-checkin-20261009
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated dependencies
+        run: npm install --no-audit --no-fund
+      - name: Bundle PDF library locally
+        run: npm run vendor:pdf
+      - name: Syntax validation
+        run: npm run check
+      - name: Unit and integration tests
+        run: npm test
+      - name: Build-only Cloudflare validation (never publishes)
+        run: npx wrangler deploy --dry-run --outdir /tmp/libri-preview

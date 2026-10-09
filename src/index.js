@@ -1,3 +1,8 @@
+import {passkeyRoutes} from './passkeys.js';
+import {guestExtraRoutes,capacityCheck,queueWaitlist} from './guest-extras.js';
+import {qrRoutes,assignQr} from './checkin.js';
+import {privacyRoutes} from './privacy.js';
+
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
@@ -143,6 +148,13 @@ export default {
 async function handleApi(request, env, url) {
   const method = request.method.toUpperCase();
   const path = url.pathname;
+  // Isolated features; old routes remain unchanged if a feature is not requested.
+  const extras={isAdmin,createAdminSession,getEvent,getEventByClientToken,bulkCreateGuests,submitListRsvp,submitFreeRsvp,assignQr,audit};
+  const featureResponse=await passkeyRoutes(request,env,url,extras)
+   ||await guestExtraRoutes(request,env,url,extras)
+   ||await qrRoutes(request,env,url,extras)
+   ||await privacyRoutes(request,env,url,extras);
+  if(featureResponse)return featureResponse;
 
 
   // =======================================================
@@ -1361,9 +1373,12 @@ async function handleApi(request, env, url) {
     }
 
 
+    if(await capacityCheck(env,event,body))return queueWaitlist(env,event,body);
+
     let guest;
 
 
+    try {
     if (event.rsvp_mode === "list") {
       if (!body.guest_id) {
         return json(
@@ -1377,7 +1392,11 @@ async function handleApi(request, env, url) {
     } else {
       guest = await submitFreeRsvp(env, event, body);
     }
-
+    } catch(e) {
+      if(String(e?.message||'').includes('CAPACITY_FULL'))return queueWaitlist(env,event,body);
+      throw e;
+    }
+    const qr=await assignQr(env,event,guest);
 
     await audit(env, {
       eventId: event.id,
@@ -1392,7 +1411,7 @@ async function handleApi(request, env, url) {
     });
 
 
-    return json({ ok: true, guest: publicGuest(guest, event) });
+    return json({ ok: true, guest: publicGuest(guest, event), qr });
   }
 
 

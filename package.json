@@ -7,9 +7,21 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply libri-rsvp-db --local",
-    "db:migrate:remote": "wrangler d1 migrations apply libri-rsvp-db --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply libri-rsvp-db --remote",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check src/index.js && node --check src/passkeys.js && node --check src/guest-extras.js && node --check src/checkin.js && node --check public/app.js && node --check public/import-wizard.js && node --check src/privacy.js && node --check public/ocr-local.js && node --check public/qr-scanner.js && node --check public/feature-ui.js && node --check public/checkin-ui.js",
+    "vendor:pdf": "node scripts/vendor-pdf.mjs"
   },
   "devDependencies": {
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.0.0",
+    "pngjs": "7.0.0"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "13.2.2",
+    "qrcode": "1.5.4",
+    "pdfjs-dist": "4.10.38",
+    "jsqr": "1.4.0",
+    "tesseract.js": "5.1.1",
+    "@tesseract.js-data/por": "1.0.0"
   }
 }

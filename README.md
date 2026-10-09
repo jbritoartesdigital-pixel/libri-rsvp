@@ -17,6 +17,10 @@ MVP de confirmação de presença para Cloudflare Workers + D1.
 - Turnstile opcional.
 - Deteção simples de duplicidade por nome no modo livre.
 
+## Novos recursos em preparação (não publicados)
+
+O pacote de importação PDF/Excel/CSV, reversão, passkeys, capacidade, espera, QR e recepção está descrito em [docs/FEATURES_20261009.md](docs/FEATURES_20261009.md). A branch de trabalho exige npm install, npm run vendor:pdf, npm run check e npm test antes de qualquer publicação. Produção permanece intocada.
+
 ## Primeira publicação
 
 1. Instale dependências:
