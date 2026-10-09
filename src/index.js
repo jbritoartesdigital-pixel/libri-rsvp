@@ -148,7 +148,7 @@ async function handleApi(request, env, url) {
   const method = request.method.toUpperCase();
   const path = url.pathname;
   // Isolated features; old routes remain unchanged if a feature is not requested.
-  const extras={isAdmin,createAdminSession,getEvent,getEventByClientToken,bulkCreateGuests,submitListRsvp,submitFreeRsvp,assignQr};
+  const extras={isAdmin,createAdminSession,getEvent,getEventByClientToken,bulkCreateGuests,submitListRsvp,submitFreeRsvp,assignQr,audit};
   const featureResponse=await passkeyRoutes(request,env,url,extras)
    ||await guestExtraRoutes(request,env,url,extras)
    ||await qrRoutes(request,env,url,extras);
