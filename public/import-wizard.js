@@ -23,7 +23,7 @@ export function groupRows(rows){
  const first=rows[0]?.map(fold)||[];
  const idx=word=>first.findIndex(h=>word.some(x=>h.includes(x)));
  const family=idx(['familia','grupo','mesa']),name=idx(['nome','convidad','integrante','pessoa']),kind=idx(['tipo','idade','categoria']),adults=idx(['adultos','maiores']),children=idx(['criancas','menores']),responsible=idx(['responsavel','titular']);
- const typed=family>=0||name>=0||kind>=0||adults>=0||children>=0||responsible>=0;
+ const typed=((rows[0]?.length||0)>1&&(family>=0||name>=0||kind>=0||adults>=0||children>=0||responsible>=0)) || ((rows[0]?.length||0)===1&&['nome','convidado','convidados'].includes(first[0]));
  const groups=new Map(),output=[];
  const add=(label,person,type='unknown')=>{
   const nm=String(person||'').trim().replace(/^\d+[\s.)-]+/,'');
