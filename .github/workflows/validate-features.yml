@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/rsvp-import-passkeys-checkin-20261009
+      - fix/mobile-import-qr-readability-20261009
   workflow_dispatch:
 
 permissions:
