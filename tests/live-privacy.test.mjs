@@ -35,9 +35,9 @@ async function setup(){
 test('leitor universal extrai somente QR do mesmo domínio e bloqueia URLs de terceiros',()=>{
  const token='A'.repeat(43);
  assert.equal(extractQrToken(token),token);
- assert.equal(extractQrToken('https://libri.example.test/qr/'+token),token);
- assert.equal(extractQrToken('https://evil.example.test/qr/'+token),'');
- assert.equal(extractQrToken('https://libri.example.test/admin'), '');
+ assert.equal(extractQrToken('https://libri.example.test/qr/'+token,'https://libri.example.test'),token);
+ assert.equal(extractQrToken('https://evil.example.test/qr/'+token,'https://libri.example.test'),'');
+ assert.equal(extractQrToken('https://libri.example.test/admin','https://libri.example.test'), '');
 });
 test('contagem em tempo real diferencia adultos/crianças e família vs. pessoas',async()=>{
  const x=await setup();
