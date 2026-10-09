@@ -179,7 +179,8 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   '<p>PDF (inclusive digitalizado via OCR), Excel (.xlsx) ou CSV. O arquivo é analisado neste dispositivo, e você revisa as famílias antes de salvar. O OCR pode demorar e não garante nomes corretos.</p>'+
   '<div class="field"><label>Arquivo</label><input id="guestFile" type="file" accept=".pdf,.xlsx,.csv,.txt,application/pdf,text/csv"></div>'+
   '<div id="importStatus" class="notice">Selecione um arquivo para conferir famílias e integrantes.</div>'+
-  '<p class="subtle" style="margin:10px 0">Confira cada <strong>nome completo</strong> abaixo. A categoria de adulto ou criança fica em outro campo.</p>'+< 'div' + ' id="importPreview" class="import-preview-list"></div><div class="actions" style="margin-top:16px">'+
+  '<p class="subtle" style="margin:10px 0">Confira cada <strong>nome completo</strong> abaixo. A categoria de adulto ou criança fica em outro campo.</p>'+
+  '<div id="importPreview" class="import-preview-list"></div><div class="actions" style="margin-top:16px">'+
   '<button id="confirmImport" type="button" class="btn" disabled>Importar famílias revisadas</button>'+
   '<button id="markAdults" type="button" class="btn secondary" hidden>Classificar indefinidos como adultos</button></div>', '',true);
  const status=w.querySelector('#importStatus'),preview=w.querySelector('#importPreview'),submit=w.querySelector('#confirmImport'),fix=w.querySelector('#markAdults');
