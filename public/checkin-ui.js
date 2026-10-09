@@ -1,9 +1,9 @@
 import {startUniversalQR,extractQrToken} from './qr-scanner.js';
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function summaryMarkup(s={}){
- return '<div class="grid two" style="margin:10px 0">'+
+ return '<div class="checkin-summary">'+
   [['Confirmadas','confirmed'],['Já chegaram','present'],['Ainda não chegaram','not_arrived'],['Adultos presentes','present_adults'],['Crianças presentes','present_children'],['Check-ins realizados','entries']]
-   .map(([title,key])=>'<div class="setting-card" style="padding:10px"><small>'+title+'</small><strong style="display:block;font-size:22px">'+Number(s[key]||0)+'</strong></div>').join('')+'</div>';
+   .map(([title,key])=>'<div class="checkin-stat"><small>'+title+'</small><strong>'+Number(s[key]||0)+'</strong></div>').join('')+'</div>';
 }
 const canScan=()=>Boolean(navigator.mediaDevices?.getUserMedia);
 async function withCamera({root,videoId,startId,stopId,toast,onRead}){
@@ -24,7 +24,7 @@ async function withCamera({root,videoId,startId,stopId,toast,onRead}){
  return off;
 }
 function checkinLines(data,{base=null,api,toast,refresh}){
- return data.checkins.map(c=>'<div class="setting-card" style="margin:7px 0"><div><strong>'+safe(c.name)+'</strong><p class="subtle">'+safe(new Date(c.created_at).toLocaleString('pt-BR'))+'</p></div>'+
+ return data.checkins.map(c=>'<div class="setting-card checkin-recent-row"><div><strong>'+safe(c.name)+'</strong><p class="subtle">'+safe(new Date(c.created_at).toLocaleString('pt-BR'))+'</p></div>'+
  (base?'<button class="btn secondary small undo-check" data-id="'+safe(c.id)+'">Desfazer check-in</button>':'')+'</div>').join('')||'<p>Nenhuma entrada registrada.</p>';
 }
 export async function showAdminCheckin({base,api,modal,toast}){
@@ -36,9 +36,9 @@ export async function showAdminCheckin({base,api,modal,toast}){
  '<video id="scannerVideo" autoplay muted playsinline style="width:100%;max-height:270px" hidden></video>'+
  '<label>Código ou link QR<input id="manualQr" placeholder="Cole o QR aqui"></label><button class="btn secondary" id="checkCode">Conferir QR</button><div id="qrPreview"></div>'+
  '<h3>Localizar pessoa ou família</h3><input id="filterPeople" placeholder="Buscar nome">'+
- '<div id="checkinPeople">'+codes.groups.map(g=>
-  '<div class="setting-card" data-search="'+safe((g.name+' '+g.qr.map(x=>x.name).join(' ')).toLowerCase())+'"><strong>'+safe(g.name)+'</strong>'+
-  g.qr.map(x=>'<div style="margin:5px 0"><span>'+safe(x.name)+'</span> <a href="'+safe(x.url)+'" target="_blank" rel="noopener">Ver ou salvar QR</a> <button class="btn secondary small by-code" data-code="'+safe(x.url.split('/').pop())+'">Conferir</button></div>').join('')+'</div>').join('')+'</div>'+
+ '<div id="checkinPeople" class="checkin-family-list">'+codes.groups.map(g=>
+  '<div class="setting-card checkin-family-card" data-search="'+safe((g.name+' '+g.qr.map(x=>x.name).join(' ')).toLowerCase())+'"><div class="checkin-family-heading"><strong>'+safe(g.name)+'</strong><span class="subtle">'+g.qr.length+' '+(g.qr.length===1?'código QR':'códigos QR')+'</span></div>'+
+  '<div class="checkin-person-list">'+g.qr.map(x=>'<div class="checkin-person-row"><span class="checkin-person-name">'+safe(x.name===g.name?'QR da família':x.name)+'</span><div class="checkin-person-actions"><a class="btn secondary small checkin-qr-link" href="'+safe(x.url)+'" target="_blank" rel="noopener">Ver / salvar QR</a><button type="button" class="btn secondary small by-code" data-code="'+safe(x.url.split('/').pop())+'">Conferir</button></div></div>').join('')+'</div></div>').join('')+'</div>'+
  '<h3>Entradas recentes <small>(atualização a cada 8 segundos)</small></h3><div id="recentCheckins"></div>', '',true);
  const status=w.querySelector('#liveSummary'),history=w.querySelector('#recentCheckins'),preview=w.querySelector('#qrPreview');
  let busy=false;
@@ -96,9 +96,9 @@ export async function receptionPage({token,api,app,toast}){
    '<label>QR ou link<input id="receptionQr" placeholder="Cole o código"></label><button id="receptionCode" class="btn secondary">Conferir QR</button>'+
    '<div id="receptionPreview"></div><h3>Busca manual</h3><input id="receptionSearch" placeholder="Buscar família ou pessoa">'+
    '<div id="receptionPeople">'+initial.guests.filter(g=>g.response_status==='yes').map(g=>
-    '<div class="setting-card" data-search="'+safe(((g.group_label||g.primary_name)+' '+initial.members.filter(m=>m.guest_id===g.id).map(m=>m.name).join(' ')).toLowerCase())+'"><strong>'+safe(g.group_label||g.primary_name)+'</strong>'+
+    '<div class="setting-card checkin-reception-guest" data-search="'+safe(((g.group_label||g.primary_name)+' '+initial.members.filter(m=>m.guest_id===g.id).map(m=>m.name).join(' ')).toLowerCase())+'"><strong>'+safe(g.group_label||g.primary_name)+'</strong><div class="checkin-person-actions">'+
     (initial.event.checkin_mode==='family'?'<button class="btn secondary small manual-entry" data-guest="'+safe(g.id)+'">Conferir família</button>':
-     initial.members.filter(m=>m.guest_id===g.id).map(m=>'<button class="btn secondary small manual-entry" data-guest="'+safe(g.id)+'" data-member="'+safe(m.id)+'">Conferir '+safe(m.name)+'</button>').join(''))+'</div>').join('')+'</div>'+
+     initial.members.filter(m=>m.guest_id===g.id).map(m=>'<button class="btn secondary small manual-entry" data-guest="'+safe(g.id)+'" data-member="'+safe(m.id)+'">Conferir '+safe(m.name)+'</button>').join(''))+'</div></div>').join('')+'</div>'+
    '<h3>Entradas recentes</h3><div id="receptionRecent"></div></section>';
   const paint=r=>{root.querySelector('#receptionLive').innerHTML=summaryMarkup(r.summary);root.querySelector('#receptionRecent').innerHTML=checkinLines(r,{api,toast});};
   paint(initial);
