@@ -1,5 +1,5 @@
-import {showAdminCheckin} from './checkin-ui.js';
-export {receptionPage,publicQrPage} from './checkin-ui.js';
+import {showAdminCheckin} from './checkin-ui.js?v=20261009-mobile-ocr-qr-readable-v4';
+export {receptionPage,publicQrPage} from './checkin-ui.js?v=20261009-mobile-ocr-qr-readable-v4';
 const safe=(s)=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const toBytes=s=>Uint8Array.from(atob(String(s).replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
 const toBase64=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
