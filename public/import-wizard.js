@@ -180,10 +180,10 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   status.textContent=groups.length+' família(s), '+count+' pessoa(s). '+(unknown?unknown+' pessoa(s) a classificar. ':'')+(nameWarnings.length?nameWarnings.length+' possível(is) nome(s) repetido(s): revise antes de importar.':'Revise os nomes antes de salvar.');
   status.style.borderColor=nameWarnings.length?'#bf7233':'';
   fix.hidden=!unknown;submit.disabled=!groups.length||unknown>0||nameWarnings.length>0||groups.some(g=>!g.primary_name||!g.members.length)||groups.length>300;
-  preview.innerHTML=groups.map((g,i)=>'<section class="card panel" style="margin:12px 0" data-group="'+i+'"><label>Família / grupo <input class="family-label" value="'+esc(g.group_label)+'"></label><div class="import-members">'+g.members.map((m,k)=>
-   '<div style="display:flex;gap:6px;align-items:center;margin:7px 0" data-member="'+k+'"><input style="flex:2;min-width:0" class="import-name" value="'+esc(m.name)+'">'+
-   '<select class="import-kind"><option value="unknown" '+(m.person_type==='unknown'?'selected':'')+'>A conferir</option><option value="adult" '+(m.person_type==='adult'?'selected':'')+'>Adulto</option><option value="child" '+(m.person_type==='child'?'selected':'')+'>Criança</option></select>'+
-   '<button type="button" class="btn secondary small remove-member">×</button></div>').join('')+
+  preview.innerHTML=groups.map((g,i)=>'<section class="card panel import-family" data-group="'+i+'"><label>Família / grupo <input class="family-label" value="'+esc(g.group_label)+'"></label><div class="import-members">'+g.members.map((m,k)=>
+   '<div class="import-member" data-member="'+k+'"><label class="import-member-name"><span>Nome do integrante</span><input class="import-name" aria-label="Nome do integrante" value="'+esc(m.name)+'"></label>'+
+   '<label class="import-member-kind"><span>Classificação</span><select class="import-kind" aria-label="Classificação do integrante"><option value="unknown" '+(m.person_type==='unknown'?'selected':'')+'>A conferir</option><option value="adult" '+(m.person_type==='adult'?'selected':'')+'>Adulto</option><option value="child" '+(m.person_type==='child'?'selected':'')+'>Criança</option></select></label>'+
+   '<button type="button" class="btn secondary small remove-member" aria-label="Remover integrante">Remover</button></div>').join('')+
    '</div>'+nameWarnings.filter(w=>w.i===i).map(w=>'<div class="notice" style="margin:8px 0;color:#9c4b2b"><strong>Nome igual: '+esc(w.name)+'</strong><p>'+esc(w.details)+'</p></div>').join('')+'<div class="actions"><button class="btn secondary small add-member" type="button">+ Integrante</button><button class="btn secondary small remove-family" type="button">Remover família</button></div></section>').join('');
   preview.querySelectorAll('[data-group]').forEach(row=>{
    const idx=Number(row.dataset.group);
