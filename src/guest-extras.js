@@ -86,6 +86,7 @@ export async function guestExtraRoutes(request,env,url,api){
      query(env,"INSERT INTO import_batches(id,event_id,file_name,source_type,created_at) VALUES(?,?,?,?,?)",batchId,event.id,short(b.file_name)||'Lista importada',short(b.source_type)||'arquivo',stamp()),
      ...created.map(g=>query(env,"INSERT INTO import_batch_items(batch_id,guest_id) VALUES(?,?)",batchId,g.id))
     ]);
+    if(api.audit)await api.audit(env,{eventId:event.id,actorRole:m[2]?'admin':'client',action:'guest_file_imported',details:{batch_id:batchId,created:created.length,failed:failed.length+(saved.failed||[]).length,file_name:short(b.file_name)}});
     return json({created:created.map(g=>({id:g.id,primary_name:g.primary_name})),failed:[...failed,...(saved.failed||[])],batch_id:created.length?batchId:null});
    }
    if(method==='POST'&&m[4]==='imports'&&m[5]){
@@ -96,6 +97,7 @@ export async function guestExtraRoutes(request,env,url,api){
     for(const g of r.results)await query(env,"UPDATE guests SET deleted_at=?,updated_at=? WHERE id=? AND event_id=? AND response_status='pending' AND updated_at=created_at",timestamp,timestamp,g.id,event.id).run();
     const count=await query(env,"SELECT COUNT(*) n FROM guests g JOIN import_batch_items i ON i.guest_id=g.id WHERE i.batch_id=? AND g.deleted_at IS NULL",batch.id).first();
     if(!count.n)await query(env,'UPDATE import_batches SET undone_at=COALESCE(undone_at,?) WHERE id=?',stamp(),batch.id).run();
+    if(api.audit)await api.audit(env,{eventId:event.id,actorRole:m[2]?'admin':'client',action:'guest_import_undone',details:{batch_id:batch.id,undone:r.results.length,remaining:Number(count.n)}});
     return json({ok:true,undone:r.results.length,remaining:Number(count.n)});
    }
   }
@@ -110,6 +112,7 @@ export async function guestExtraRoutes(request,env,url,api){
      if(cap!==null&&(!Number.isInteger(cap)||cap<1||cap>100000))return json({error:'Capacidade inválida.'},400);
      if(!['off','family','individual'].includes(b.checkin_mode))return json({error:'Modo QR inválido.'},400);
      await query(env,"UPDATE events SET max_capacity=?,waitlist_enabled=?,checkin_mode=?,updated_at=? WHERE id=?",cap,b.waitlist_enabled?1:0,b.checkin_mode,stamp(),event.id).run();
+     if(api.audit)await api.audit(env,{eventId:event.id,actorRole:'admin',action:'event_capacity_updated',details:{max_capacity:cap,waitlist_enabled:!!b.waitlist_enabled,checkin_mode:b.checkin_mode}});
      return json({ok:true});
     }
    }
@@ -123,6 +126,7 @@ export async function guestExtraRoutes(request,env,url,api){
      if(!w)return json({error:'Solicitação indisponível.'},404);
      if(a[4]==='cancel'){
       await query(env,"UPDATE waitlist_entries SET status='cancelled' WHERE id=?",w.id).run();
+      if(api.audit)await api.audit(env,{eventId:event.id,actorRole:'admin',action:'waitlist_cancelled',details:{entry_id:w.id}});
       return json({ok:true});
      }
      if(a[4]==='promote'){
@@ -132,6 +136,7 @@ export async function guestExtraRoutes(request,env,url,api){
        const guest=event.rsvp_mode==='list'?await api.submitListRsvp(env,event,b):await api.submitFreeRsvp(env,event,b);
        if(api.assignQr)await api.assignQr(env,event,guest);
        await query(env,"UPDATE waitlist_entries SET status='promoted',promoted_at=? WHERE id=?",stamp(),w.id).run();
+       if(api.audit)await api.audit(env,{eventId:event.id,actorRole:'admin',action:'waitlist_promoted',details:{entry_id:w.id,guest_id:guest.id}});
        return json({ok:true,guest_id:guest.id});
       }catch(e){if(String(e.message).includes('CAPACITY_FULL'))return json({error:'Capacidade esgotada.'},409);throw e;}
      }
