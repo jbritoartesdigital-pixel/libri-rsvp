@@ -23,7 +23,7 @@ export function extractQrToken(value,origin=globalThis.location?.origin){
 /** Never auto-register: the decoded token only opens a confirmation preview. */
 export async function startUniversalQR({video,onRead,onError=()=>{},onStop=()=>{}}){
  if(!navigator.mediaDevices?.getUserMedia)throw Error('A câmera precisa de HTTPS e permissão do navegador.');
- let stream,active=true,timer=null,busy=false,detector=null,decoder=null;
+ let stream,active=true,timer=null,busy=false,detector=null,decoder=null,nativeFailures=0;
  const stop=()=>{
   if(!active)return;active=false;if(timer!==null)clearTimeout(timer);
   stream?.getTracks().forEach(t=>t.stop());video.pause();video.srcObject=null;onStop();
@@ -33,7 +33,10 @@ export async function startUniversalQR({video,onRead,onError=()=>{},onStop=()=>{
  document.addEventListener('visibilitychange',onVisibility);
  try{
   if(typeof globalThis.BarcodeDetector==='function'){
-   try{detector=new globalThis.BarcodeDetector({formats:['qr_code']});}catch{}
+   try{
+    const formats=await globalThis.BarcodeDetector.getSupportedFormats?.();
+    if(!formats||formats.includes('qr_code'))detector=new globalThis.BarcodeDetector({formats:['qr_code']});
+   }catch{}
   }
   if(!detector)decoder=await loadDecoder();
   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
@@ -56,8 +59,11 @@ export async function startUniversalQR({video,onRead,onError=()=>{},onStop=()=>{
     }
     const token=extractQrToken(scanned);
     if(token){stop();await onRead(token);return;}
-   }catch(e){onError(e);}
-   finally{busy=false;}
+   }catch(e){
+    if(detector&&++nativeFailures>=2){
+     try{decoder=await loadDecoder();detector=null;}catch(error){onError(error);}
+    }else onError(e);
+   }finally{busy=false;}
    if(active)timer=setTimeout(tick,240);
   };
   timer=setTimeout(tick,120);
