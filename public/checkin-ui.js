@@ -1,9 +1,9 @@
 import {startUniversalQR,extractQrToken} from './qr-scanner.js';
 const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function summaryMarkup(s={}){
- return '<div class="grid two" style="margin:10px 0">'+
+ return '<div class="qr-stats">'+
   [['Confirmadas','confirmed'],['Já chegaram','present'],['Ainda não chegaram','not_arrived'],['Adultos presentes','present_adults'],['Crianças presentes','present_children'],['Check-ins realizados','entries']]
-   .map(([title,key])=>'<div class="setting-card" style="padding:10px"><small>'+title+'</small><strong style="display:block;font-size:22px">'+Number(s[key]||0)+'</strong></div>').join('')+'</div>';
+   .map(([title,key])=>'<div class="qr-stat"><span class="qr-stat-label">'+title+'</span><strong class="qr-stat-value">'+Number(s[key]||0)+'</strong></div>').join('')+'</div>';
 }
 const canScan=()=>Boolean(navigator.mediaDevices?.getUserMedia);
 async function withCamera({root,videoId,startId,stopId,toast,onRead}){
@@ -24,22 +24,32 @@ async function withCamera({root,videoId,startId,stopId,toast,onRead}){
  return off;
 }
 function checkinLines(data,{base=null,api,toast,refresh}){
- return data.checkins.map(c=>'<div class="setting-card" style="margin:7px 0"><div><strong>'+safe(c.name)+'</strong><p class="subtle">'+safe(new Date(c.created_at).toLocaleString('pt-BR'))+'</p></div>'+
+ return data.checkins.map(c=>'<div class="qr-recent-row qr-family-card" style="margin:7px 0"><div class="qr-recent-name"><strong>'+safe(c.name)+'</strong><p class="subtle">'+safe(new Date(c.created_at).toLocaleString('pt-BR'))+'</p></div>'+
  (base?'<button class="btn secondary small undo-check" data-id="'+safe(c.id)+'">Desfazer check-in</button>':'')+'</div>').join('')||'<p>Nenhuma entrada registrada.</p>';
+}
+// Separate every guest name from its action links: narrow screens must never merge labels.
+export function qrFamilyMarkup(groups){
+ return '<div class="qr-family-list">'+groups.map(g=>
+  '<article class="qr-family-card" data-search="'+safe((g.name+' '+g.qr.map(x=>x.name).join(' ')).toLowerCase())+'">'+
+  '<h4 class="qr-family-name">'+safe(g.name)+'</h4>'+
+  '<div class="qr-person-list">'+g.qr.map(x=>
+   '<div class="qr-person-row"><span class="qr-person-name">'+safe(x.name)+'</span>'+
+   '<div class="qr-person-actions"><a class="qr-person-link" href="'+safe(x.url)+'" target="_blank" rel="noopener">Ver / salvar QR</a>'+
+   '<button type="button" class="btn secondary small by-code" data-code="'+safe(x.url.split('/').pop())+'">Conferir entrada</button></div></div>').join('')+
+  '</div></article>').join('')+'</div>';
 }
 export async function showAdminCheckin({base,api,modal,toast}){
  const [initial,codes]=await Promise.all([api(base+'/checkin'),api(base+'/qr-list')]);
  const w=modal('Check-in · '+initial.event.title,
  '<p>A câmera só confere o QR. Confirme a entrada após verificar o nome.</p>'+
  '<h3>Entradas ao vivo</h3><div id="liveSummary">'+summaryMarkup(initial.summary)+'</div>'+
- '<div class="actions"><button class="btn" id="cameraStart">Abrir câmera QR</button><button class="btn secondary" id="cameraStop" hidden>Parar câmera</button></div>'+
- '<video id="scannerVideo" autoplay muted playsinline style="width:100%;max-height:270px" hidden></video>'+
+ '<div class="qr-actions"><button class="btn" id="cameraStart">Abrir câmera QR</button><button class="btn secondary" id="cameraStop" hidden>Parar câmera</button></div>'+
+ '<video id="scannerVideo" class="qr-scanner-video" autoplay muted playsinline hidden></video>'+
  '<label>Código ou link QR<input id="manualQr" placeholder="Cole o QR aqui"></label><button class="btn secondary" id="checkCode">Conferir QR</button><div id="qrPreview"></div>'+
  '<h3>Localizar pessoa ou família</h3><input id="filterPeople" placeholder="Buscar nome">'+
- '<div id="checkinPeople">'+codes.groups.map(g=>
-  '<div class="setting-card" data-search="'+safe((g.name+' '+g.qr.map(x=>x.name).join(' ')).toLowerCase())+'"><strong>'+safe(g.name)+'</strong>'+
-  g.qr.map(x=>'<div style="margin:5px 0"><span>'+safe(x.name)+'</span> <a href="'+safe(x.url)+'" target="_blank" rel="noopener">Ver ou salvar QR</a> <button class="btn secondary small by-code" data-code="'+safe(x.url.split('/').pop())+'">Conferir</button></div>').join('')+'</div>').join('')+'</div>'+
+ '<div id="checkinPeople">'+qrFamilyMarkup(codes.groups)+'</div>'+ 
  '<h3>Entradas recentes <small>(atualização a cada 8 segundos)</small></h3><div id="recentCheckins"></div>', '',true);
+ w.querySelector('.modal')?.classList.add('qr-checkin-panel');
  const status=w.querySelector('#liveSummary'),history=w.querySelector('#recentCheckins'),preview=w.querySelector('#qrPreview');
  let busy=false;
  const paint=data=>{
@@ -81,7 +91,7 @@ export async function showAdminCheckin({base,api,modal,toast}){
  const interval=setInterval(()=>{if(!w.isConnected){clearInterval(interval);return;}if(document.visibilityState==='visible')refresh();},8000);
 }
 export async function receptionPage({token,api,app,toast}){
- const root=document.createElement('main');root.className='shell';app.replaceChildren(root);
+ const root=document.createElement('main');root.className='shell qr-checkin-panel';app.replaceChildren(root);
  const base='/api/recepcao/'+encodeURIComponent(token);
  let stopCamera=null,liveTimer=null,currentEventId=null;
  const cleanup=()=>{stopCamera?.();if(liveTimer)clearInterval(liveTimer);};
@@ -91,8 +101,8 @@ export async function receptionPage({token,api,app,toast}){
   currentEventId=initial.event.id;
   root.innerHTML='<section class="card panel"><h1>Recepção · '+safe(initial.event.title)+'</h1>'+
    '<p>Esta tela dá acesso somente à entrada desta festa.</p><div id="receptionLive">'+summaryMarkup(initial.summary)+'</div>'+
-   '<div class="actions"><button id="staffStart" class="btn">Abrir câmera QR</button><button id="staffStop" class="btn secondary" hidden>Parar câmera</button></div>'+
-   '<video id="staffVideo" autoplay muted playsinline style="width:100%;max-height:270px" hidden></video>'+
+   '<div class="qr-actions"><button id="staffStart" class="btn">Abrir câmera QR</button><button id="staffStop" class="btn secondary" hidden>Parar câmera</button></div>'+
+   '<video id="staffVideo" class="qr-scanner-video" autoplay muted playsinline hidden></video>'+
    '<label>QR ou link<input id="receptionQr" placeholder="Cole o código"></label><button id="receptionCode" class="btn secondary">Conferir QR</button>'+
    '<div id="receptionPreview"></div><h3>Busca manual</h3><input id="receptionSearch" placeholder="Buscar família ou pessoa">'+
    '<div id="receptionPeople">'+initial.guests.filter(g=>g.response_status==='yes').map(g=>
