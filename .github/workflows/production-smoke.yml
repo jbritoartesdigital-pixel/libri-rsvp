@@ -1,0 +1,44 @@
+name: Libri RSVP production smoke (read only)
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify public UI, protected API and assets without mutating data
+        env:
+          BASE_URL: https://libri-rsvp.jbrito-artesdigital.workers.dev
+        run: |
+          node --input-type=module <<'NODE'
+          const base=process.env.BASE_URL;
+          const routes=[
+            {path:'/',expected:[200],type:'text/html'},
+            {path:'/admin',expected:[200],type:'text/html'},
+            {path:'/api/admin/me',expected:[401],type:'application/json'},
+            {path:'/qr-scanner.js',expected:[200],type:'javascript'},
+            {path:'/checkin-ui.js',expected:[200],type:'javascript'},
+            {path:'/vendor/jsQR.js',expected:[200],type:'javascript'},
+            {path:'/vendor/pdf.min.mjs',expected:[200],type:'javascript'},
+            {path:'/vendor/ocr/por.traineddata.gz',expected:[200],type:'application/gzip'}
+          ];
+          let failures=0;
+          for(const route of routes){
+            try{
+              const res=await fetch(base+route.path,{signal:AbortSignal.timeout(15000),headers:{'cache-control':'no-cache'}});
+              const type=res.headers.get('content-type')||'';
+              const ok=route.expected.includes(res.status)&&type.includes(route.type);
+              let size=0;
+              if(ok){const bytes=new Uint8Array(await res.arrayBuffer());size=bytes.length;if(route.path!=='/api/admin/me'&&size<200)throw Error('Resource too small');}
+              console.log(`${ok?'OK':'FAIL'} ${route.path} HTTP ${res.status} type=${type.slice(0,50)} bytes=${size}`);
+              if(!ok)failures++;
+            }catch(error){console.log(`FAIL ${route.path}: ${error.name}`);failures++;}
+          }
+          if(failures)process.exitCode=1;
+          NODE
+          echo 'Read-only verification finished.'
