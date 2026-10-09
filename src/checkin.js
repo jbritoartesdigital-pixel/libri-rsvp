@@ -52,7 +52,11 @@ async function report(env,event){
   q(env,"SELECT id,display_name,people_count,status FROM waitlist_entries WHERE event_id=? AND status='waiting' ORDER BY created_at",event.id).all()
  ]);
  const members=(await q(env,"SELECT m.id,m.name,m.guest_id,m.person_type FROM guest_members m JOIN guests g ON g.id=m.guest_id WHERE m.event_id=? AND m.deleted_at IS NULL AND m.attendance_status='yes' AND g.response_status='yes' AND g.deleted_at IS NULL ORDER BY m.name",event.id).all()).results;
- return {event:{id:event.id,title:event.title,checkin_mode:event.checkin_mode},guests:guests.results,members,checkins:checkins.results,waitlist:queue.results};
+ const totals=await q(env,"SELECT COUNT(*) total, COALESCE(SUM(CASE WHEN m.person_type='adult' THEN 1 ELSE 0 END),0) adults, COALESCE(SUM(CASE WHEN m.person_type='child' THEN 1 ELSE 0 END),0) children, COALESCE(SUM(CASE WHEN EXISTS(SELECT 1 FROM event_checkins c WHERE c.event_id=m.event_id AND c.guest_id=m.guest_id AND (c.member_id=m.id OR c.member_id IS NULL)) THEN 1 ELSE 0 END),0) present, COALESCE(SUM(CASE WHEN m.person_type='adult' AND EXISTS(SELECT 1 FROM event_checkins c WHERE c.event_id=m.event_id AND c.guest_id=m.guest_id AND (c.member_id=m.id OR c.member_id IS NULL)) THEN 1 ELSE 0 END),0) present_adults, COALESCE(SUM(CASE WHEN m.person_type='child' AND EXISTS(SELECT 1 FROM event_checkins c WHERE c.event_id=m.event_id AND c.guest_id=m.guest_id AND (c.member_id=m.id OR c.member_id IS NULL)) THEN 1 ELSE 0 END),0) present_children FROM guest_members m JOIN guests g ON g.id=m.guest_id WHERE m.event_id=? AND m.deleted_at IS NULL AND m.attendance_status='yes' AND g.response_status='yes' AND g.deleted_at IS NULL",event.id).first();
+ const checkinCount=await q(env,'SELECT COUNT(*) n FROM event_checkins WHERE event_id=?',event.id).first();
+ const summary={confirmed:Number(totals.total),present:Number(totals.present),not_arrived:Number(totals.total)-Number(totals.present),
+ adults:Number(totals.adults),children:Number(totals.children),present_adults:Number(totals.present_adults),present_children:Number(totals.present_children),entries:Number(checkinCount.n)};
+ return {event:{id:event.id,title:event.title,checkin_mode:event.checkin_mode},summary,guests:guests.results,members,checkins:checkins.results,waitlist:queue.results};
 }
 async function reception(env,token){
  const access=await q(env,"SELECT * FROM reception_access WHERE token_hash=? AND revoked_at IS NULL AND expires_at>?",await digest(token),stamp()).first();
@@ -60,12 +64,27 @@ async function reception(env,token){
  const event=await q(env,"SELECT * FROM events WHERE id=?",access.event_id).first();
  return eventActive(event)?event:null;
 }
+async function undoCheckin(env,event,checkinId,b,api){
+ if(b.confirm!==true)return j({error:'Confirme explicitamente o estorno desta entrada.'},400);
+ const reason=String(b.reason||'Entrada marcada por engano').trim().slice(0,160);
+ if(!reason)return j({error:'Informe o motivo.'},400);
+ const existing=await q(env,'SELECT * FROM event_checkins WHERE id=? AND event_id=?',checkinId,event.id).first();
+ if(!existing)return j({error:'Entrada não encontrada ou já desfeita.'},404);
+ const timestamp=stamp();
+ await env.DB.batch([
+  q(env,"INSERT INTO checkin_reversals(id,event_id,checkin_id,guest_id,member_id,subject_key,original_created_at,original_source,reason,actor,reversed_at) VALUES(?,?,?,?,?,?,?,?,?,'admin',?)",
+   crypto.randomUUID(),event.id,existing.id,existing.guest_id,existing.member_id,existing.subject_key,existing.created_at,existing.source,reason,timestamp),
+  q(env,'DELETE FROM event_checkins WHERE id=? AND event_id=?',existing.id,event.id)
+ ]);
+ await api.audit?.(env,{eventId:event.id,actorRole:'admin',action:'checkin_undone',details:{checkin_id:existing.id,reason}});
+ return j({ok:true,undone_id:existing.id});
+}
 export async function qrRoutes(request,env,url,api){
  const path=url.pathname,method=request.method;
  if(!/^\/api\/(admin\/events\/[^/]+\/(qr-list|checkin|reception)|recepcao\/|q\/|qr-svg\/)/.test(path))return null;
  try{
   if(method!=='GET'&&request.headers.get('origin')!==url.origin)return j({error:'Origem não autorizada.'},403);
-  const a=path.match(/^\/api\/admin\/events\/([^/]+)\/(qr-list|checkin|reception)(?:\/([^/]+)\/revoke)?$/);
+  const a=path.match(/^\/api\/admin\/events\/([^/]+)\/(qr-list|checkin|reception)(?:\/([^/]+)\/(undo|revoke))?$/);
   if(a){
    if(!await api.isAdmin(request,env))return j({error:'Não autorizado.'},401);
    const event=await api.getEvent(env,a[1]);if(!event)return j({error:'Evento não encontrado.'},404);
@@ -76,15 +95,16 @@ export async function qrRoutes(request,env,url,api){
     return j({groups});
    }
    if(a[2]==='checkin'){
-    if(method==='GET')return j(await report(env,event));
-    if(method==='POST')return checkin(env,event,await data(request),'admin');
+    if(method==='GET'&&!a[3])return j(await report(env,event));
+    if(method==='POST'&&a[3]&&a[4]==='undo')return undoCheckin(env,event,a[3],await data(request),api);
+    if(method==='POST'&&!a[3])return checkin(env,event,await data(request),'admin');
    }
    if(a[2]==='reception'){
     if(method==='GET'){
      const r=await q(env,"SELECT id,label,created_at,expires_at,revoked_at FROM reception_access WHERE event_id=? ORDER BY created_at DESC",event.id).all();
      return j({access:r.results});
     }
-    if(method==='POST'&&a[3]){
+    if(method==='POST'&&a[3]&&a[4]==='revoke'){
      await q(env,"UPDATE reception_access SET revoked_at=? WHERE id=? AND event_id=?",stamp(),a[3],event.id).run();
      return j({ok:true});
     }
