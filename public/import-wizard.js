@@ -153,6 +153,25 @@ export async function parseGuestFile(file,options={}){
  if(name.endsWith('.pdf'))return readPDF(file,options);
  throw Error('Use PDF com texto, Excel .xlsx ou CSV.');
 }
+// Explicit labels and editable full names avoid the mobile flex layout swallowing name inputs.
+export function importPreviewMarkup(groups,warnings=[],esc=value=>String(value)){
+ return '<div class="import-preview-list">'+groups.map((g,i)=>{
+  const adults=g.members.filter(m=>m.person_type==='adult').length;
+  const children=g.members.filter(m=>m.person_type==='child').length;
+  const kindOption=(m,value,text)=>'<option value="'+value+'" '+(m.person_type===value?'selected':'')+'>'+text+'</option>';
+  return '<section class="import-family-card" data-group="'+i+'">'+
+   '<div class="import-family-heading"><strong>Família '+(i+1)+' de '+groups.length+'</strong><span class="import-family-summary">'+g.members.length+' pessoa(s) · '+adults+' adulto(s) · '+children+' criança(s)</span></div>'+
+   '<label class="import-group-field"><span class="import-field-label">Nome da família / grupo</span><input class="family-label" value="'+esc(g.group_label)+'" aria-label="Nome da família '+(i+1)+'"></label>'+
+   '<div class="import-members">'+g.members.map((m,k)=>
+    '<div class="import-member-row" data-member="'+k+'">'+
+    '<label class="import-name-field"><span class="import-field-label">Nome da pessoa '+(k+1)+'</span><input class="import-name" value="'+esc(m.name)+'" aria-label="Nome da pessoa '+(k+1)+'" autocomplete="off"></label>'+
+    '<label class="import-kind-field"><span class="import-field-label">Categoria</span><select class="import-kind" aria-label="Categoria de '+esc(m.name)+'">'+
+    kindOption(m,'unknown','A conferir')+kindOption(m,'adult','Adulto')+kindOption(m,'child','Criança')+'</select></label>'+
+    '<button type="button" class="btn secondary small remove-member" aria-label="Remover '+esc(m.name)+'">×</button></div>').join('')+'</div>'+
+   warnings.filter(w=>w.i===i).map(w=>'<div class="notice" style="margin:8px 0;color:#9c4b2b"><strong>Nome igual: '+esc(w.name)+'</strong><p>'+esc(w.details)+'</p></div>').join('')+
+   '<div class="actions"><button class="btn secondary small add-member" type="button">+ Integrante</button><button class="btn secondary small remove-family" type="button">Remover família</button></div></section>';
+ }).join('')+'</div>';
+}
 export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,onSaved}){
  const base=role==='admin'?'/api/admin/events/'+eventId:'/api/client/'+encodeURIComponent(token);
  let groups=[],file=null,existingNames=new Map(),nameWarnings=[];
@@ -160,7 +179,7 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   '<p>PDF (inclusive digitalizado via OCR), Excel (.xlsx) ou CSV. O arquivo é analisado neste dispositivo, e você revisa as famílias antes de salvar. O OCR pode demorar e não garante nomes corretos.</p>'+
   '<div class="field"><label>Arquivo</label><input id="guestFile" type="file" accept=".pdf,.xlsx,.csv,.txt,application/pdf,text/csv"></div>'+
   '<div id="importStatus" class="notice">Selecione um arquivo para conferir famílias e integrantes.</div>'+
-  '<div id="importPreview"></div><div class="actions" style="margin-top:16px">'+
+  '<p class="subtle" style="margin:10px 0">Confira cada <strong>nome completo</strong> abaixo. A categoria de adulto ou criança fica em outro campo.</p>'+< 'div' + ' id="importPreview" class="import-preview-list"></div><div class="actions" style="margin-top:16px">'+
   '<button id="confirmImport" type="button" class="btn" disabled>Importar famílias revisadas</button>'+
   '<button id="markAdults" type="button" class="btn secondary" hidden>Classificar indefinidos como adultos</button></div>', '',true);
  const status=w.querySelector('#importStatus'),preview=w.querySelector('#importPreview'),submit=w.querySelector('#confirmImport'),fix=w.querySelector('#markAdults');
@@ -180,11 +199,7 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   status.textContent=groups.length+' família(s), '+count+' pessoa(s). '+(unknown?unknown+' pessoa(s) a classificar. ':'')+(nameWarnings.length?nameWarnings.length+' possível(is) nome(s) repetido(s): revise antes de importar.':'Revise os nomes antes de salvar.');
   status.style.borderColor=nameWarnings.length?'#bf7233':'';
   fix.hidden=!unknown;submit.disabled=!groups.length||unknown>0||nameWarnings.length>0||groups.some(g=>!g.primary_name||!g.members.length)||groups.length>300;
-  preview.innerHTML=groups.map((g,i)=>'<section class="card panel" style="margin:12px 0" data-group="'+i+'"><label>Família / grupo <input class="family-label" value="'+esc(g.group_label)+'"></label><div class="import-members">'+g.members.map((m,k)=>
-   '<div style="display:flex;gap:6px;align-items:center;margin:7px 0" data-member="'+k+'"><input style="flex:2;min-width:0" class="import-name" value="'+esc(m.name)+'">'+
-   '<select class="import-kind"><option value="unknown" '+(m.person_type==='unknown'?'selected':'')+'>A conferir</option><option value="adult" '+(m.person_type==='adult'?'selected':'')+'>Adulto</option><option value="child" '+(m.person_type==='child'?'selected':'')+'>Criança</option></select>'+
-   '<button type="button" class="btn secondary small remove-member">×</button></div>').join('')+
-   '</div>'+nameWarnings.filter(w=>w.i===i).map(w=>'<div class="notice" style="margin:8px 0;color:#9c4b2b"><strong>Nome igual: '+esc(w.name)+'</strong><p>'+esc(w.details)+'</p></div>').join('')+'<div class="actions"><button class="btn secondary small add-member" type="button">+ Integrante</button><button class="btn secondary small remove-family" type="button">Remover família</button></div></section>').join('');
+  preview.innerHTML=importPreviewMarkup(groups,nameWarnings,esc);
   preview.querySelectorAll('[data-group]').forEach(row=>{
    const idx=Number(row.dataset.group);
    row.querySelector('.family-label').onchange=e=>{groups[idx].group_label=e.target.value;groups[idx].primary_name=groups[idx].members[0]?.name||'';render();};
