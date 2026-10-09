@@ -78,13 +78,14 @@ export async function mountFeatureSettings({root,event,api,toast,modal}){
  '<div class="grid two"><label>Capacidade máxima da festa<input id="eventCapacity" type="number" min="1" placeholder="Sem limite"></label>'+
  '<label>Check-in<select id="checkinMode"><option value="off">Desativado</option><option value="family">Por família</option><option value="individual">Por pessoa</option></select></label></div>'+
  '<label><input type="checkbox" id="enableWaitlist"> Permitir lista de espera ao atingir a capacidade</label>'+
- '<div class="actions" style="margin:12px 0"><button class="btn" id="saveExtra">Salvar regras</button><button class="btn secondary" id="openCheckin">Abrir check-in</button><button class="btn secondary" id="openQueue">Lista de espera</button><button class="btn secondary" id="staffAccess">Acesso da recepção</button></div><div id="extraDetail"></div>';
+ '<div class="actions" style="margin:12px 0"><button class="btn" id="saveExtra">Salvar regras</button><button class="btn secondary" id="openCheckin">Abrir check-in</button><button class="btn secondary" id="openQueue">Lista de espera</button><button class="btn secondary" id="staffAccess">Acesso da recepção</button><button class="btn secondary" id="privacyCleanup">Privacidade após a festa</button></div><div id="extraDetail"></div>';
  root.append(panel);
  const base='/api/admin/events/'+event.id,data=await api(base+'/features'),rules=data.settings;
  panel.querySelector('#eventCapacity').value=rules.max_capacity||'';
  panel.querySelector('#enableWaitlist').checked=rules.waitlist_enabled;
  panel.querySelector('#checkinMode').value=rules.checkin_mode||'off';
  const detail=panel.querySelector('#extraDetail');
+ panel.querySelector('#privacyCleanup').onclick=()=>privacyCleanupModal({base,api,toast,modal});
  panel.querySelector('#saveExtra').onclick=async()=>{
   try{
    await api(base+'/features',{method:'PATCH',body:JSON.stringify({
@@ -121,4 +122,39 @@ export async function mountFeatureSettings({root,event,api,toast,modal}){
   };
   w.querySelectorAll('.revoke').forEach(b=>b.onclick=async()=>{await api(base+'/reception/'+b.dataset.id+'/revoke',{method:'POST',body:'{}'});b.disabled=true;toast('Acesso revogado.');});
  };
+}
+
+async function privacyCleanupModal({base,api,toast,modal}){
+ try{
+  const d=await api(base+'/privacy'),counts=d.counts;
+  const w=modal('Privacidade e limpeza após a festa',
+   '<p>Remova os dados pessoais de convidados após o período definido. A exclusão é permanente. Exporte sua lista CSV antes.</p>'+
+   '<p><strong>Evento:</strong> '+safe(d.event.title)+'</p>'+
+   '<p><strong>Data:</strong> '+safe(d.event.event_date||'Não informada')+'</p>'+
+   '<p><strong>Prazo mínimo:</strong> '+safe(d.due_date||'Indisponível')+'</p>'+
+   '<p><strong>Cadastros:</strong> '+counts.guests+' | <strong>Pessoas:</strong> '+counts.guest_members+
+   ' | <strong>Entradas:</strong> '+counts.event_checkins+' | <strong>Espera:</strong> '+counts.waitlist_entries+'</p>'+
+   '<div class="field"><label>Dias após a data da festa (1 a 3650)</label><input id="retentionDays" type="number" min="1" max="3650" value="'+safe(d.event.retention_days??1)+'"></div>'+
+   '<button class="btn secondary" id="saveRetention">Salvar prazo de retenção</button>'+
+   '<div class="notice" style="margin-top:16px"><strong>'+safe(d.eligible?'Exclusão disponível após confirmação':'Exclusão indisponível no momento')+'</strong><p>'+safe(d.reason||'Apaga convidados, membros, respostas, check-ins, links da recepção, filas e registros pessoais. Mantém o cadastro do evento e artes R2.')+'</p></div>'+
+   '<p>Para confirmar, digite exatamente o identificador <strong>'+safe(d.event.slug)+'</strong> e depois a frase <strong>EXCLUIR DADOS</strong>.</p>'+
+   '<div class="field"><label>Identificador</label><input id="purgeSlug" autocomplete="off"></div>'+
+   '<div class="field"><label>Frase de confirmação</label><input id="purgePhrase" autocomplete="off"></div>'+
+   '<button id="purgeGuestData" class="btn danger block" '+(!d.eligible?'disabled':'')+'>Excluir definitivamente dados pessoais deste evento</button>', '',true);
+  w.querySelector('#saveRetention').onclick=async()=>{
+   const days=Number(w.querySelector('#retentionDays').value);
+   try{await api(base+'/privacy/settings',{method:'PATCH',body:JSON.stringify({retention_days:days})});
+    toast('Prazo salvo. Abra esta tela novamente para consultar a nova data de liberação.');w.closeModal();
+   }catch(e){toast(e.message,true);}
+  };
+  w.querySelector('#purgeGuestData').onclick=async()=>{
+   const slug=w.querySelector('#purgeSlug').value.trim(),phrase=w.querySelector('#purgePhrase').value.trim();
+   if(slug!==d.event.slug||phrase!=='EXCLUIR DADOS')return toast('Preencha as duas confirmações exatamente.',true);
+   if(!confirm('Esta ação é IRREVERSÍVEL. Já exportou seus dados? Confirmar exclusão definitiva?'))return;
+   const button=w.querySelector('#purgeGuestData');button.disabled=true;
+   try{const result=await api(base+'/privacy/cleanup',{method:'POST',body:JSON.stringify({confirm_slug:slug,confirm_text:phrase})});
+    toast(result.counts.guests+' cadastros removidos. O evento foi arquivado.');w.closeModal();
+   }catch(e){button.disabled=false;toast(e.message,true);}
+  };
+ }catch(e){toast(e.message,true);}
 }
