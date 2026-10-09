@@ -28,8 +28,8 @@ export function groupRows(rows){
  const add=(label,person,type='unknown')=>{
   const nm=String(person||'').trim().replace(/^\d+[\s.)-]+/,'');
   if(!nm||/^(total|quantidade|lista de convidados|convidados|nome)$/i.test(nm))return;
-  const guessed=/(?:\(\s*crianc|\bcrianc[ao]\b|infantil)/i.test(nm)?'child':/(\(\s*adulto\s*\)|\badulto\b)/i.test(nm)?'adult':type;
-  const clean=nm.replace(/\s*\((?:crianc[ao]|adulto)\s*\)\s*/gi,'').trim();
+  const guessed=/(?:\(\s*crianc|\bcrianc[ao]\b|infantil)/i.test(fold(nm))?'child':/(\(\s*adulto\s*\)|\badulto\b)/i.test(fold(nm))?'adult':type;
+  const clean=nm.replace(/\s*\((?:crian[çc][ao]|adulto)\s*\)\s*/gi,'').trim();
   const key=fold(label||clean),title=String(label||clean).trim();
   if(!groups.has(key)){const g={group_label:title,primary_name:'',members:[],source_lines:[]};groups.set(key,g);output.push(g);}
   const g=groups.get(key);
