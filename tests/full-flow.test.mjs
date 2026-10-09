@@ -9,10 +9,11 @@ async function runtime(){
  for(const file of ['0001_init.sql','0002_v1.sql','0003_v2.sql','0004_guest_type_limits.sql','0005_import_passkeys_checkin.sql'])
   db.exec(await readFile(new URL('../migrations/'+file,import.meta.url),'utf8'));
  const binding={
-  prepare(sql){return {bind(...args){const statement=db.prepare(sql);return{
-   first:async()=>statement.get(...args)||null,all:async()=>({results:statement.all(...args)}),
+  prepare(sql){const statement=db.prepare(sql),bound=(args)=>({
+   first:async()=>statement.get(...args)||null,
+   all:async()=>({results:statement.all(...args)}),
    run:async()=>({meta:{changes:statement.run(...args).changes}})
-  };}}},
+  });return {...bound([]),bind(...args){return bound(args);}};},
   async batch(statements){db.exec('BEGIN');try{const result=[];for(const stmt of statements)result.push(await stmt.run());db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}
  };
  const env={DB:binding,ADMIN_PASSWORD:'safe-local-fixture-secret',SESSION_SECRET:'this-only-appears-in-local-test-fixture'};
