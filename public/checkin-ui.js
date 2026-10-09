@@ -105,10 +105,15 @@ export async function receptionPage({token,api,app,toast}){
    '<video id="staffVideo" class="qr-scanner-video" autoplay muted playsinline hidden></video>'+
    '<label>QR ou link<input id="receptionQr" placeholder="Cole o código"></label><button id="receptionCode" class="btn secondary">Conferir QR</button>'+
    '<div id="receptionPreview"></div><h3>Busca manual</h3><input id="receptionSearch" placeholder="Buscar família ou pessoa">'+
-   '<div id="receptionPeople">'+initial.guests.filter(g=>g.response_status==='yes').map(g=>
-    '<div class="setting-card" data-search="'+safe(((g.group_label||g.primary_name)+' '+initial.members.filter(m=>m.guest_id===g.id).map(m=>m.name).join(' ')).toLowerCase())+'"><strong>'+safe(g.group_label||g.primary_name)+'</strong>'+
-    (initial.event.checkin_mode==='family'?'<button class="btn secondary small manual-entry" data-guest="'+safe(g.id)+'">Conferir família</button>':
-     initial.members.filter(m=>m.guest_id===g.id).map(m=>'<button class="btn secondary small manual-entry" data-guest="'+safe(g.id)+'" data-member="'+safe(m.id)+'">Conferir '+safe(m.name)+'</button>').join(''))+'</div>').join('')+'</div>'+
+   '<div id="receptionPeople" class="qr-family-list">'+initial.guests.filter(g=>g.response_status==='yes').map(g=>{
+    const members=initial.members.filter(m=>m.guest_id===g.id);
+    const familyName=g.group_label||g.primary_name;
+    const search=(familyName+' '+members.map(m=>m.name).join(' ')).toLowerCase();
+    const personRows=initial.event.checkin_mode==='family'
+     ?'<div class="qr-person-row"><span class="qr-person-name">'+members.map(m=>safe(m.name)).join(', ')+'</span><div class="qr-person-actions"><button class="btn secondary small manual-entry" data-guest="'+safe(g.id)+'">Conferir família</button></div></div>'
+     :members.map(m=>'<div class="qr-person-row"><span class="qr-person-name">'+safe(m.name)+'</span><div class="qr-person-actions"><button class="btn secondary small manual-entry" data-guest="'+safe(g.id)+'" data-member="'+safe(m.id)+'">Conferir entrada</button></div></div>').join('');
+    return '<article class="qr-family-card" data-search="'+safe(search)+'"><h4 class="qr-family-name">'+safe(familyName)+'</h4><div class="qr-person-list">'+personRows+'</div></article>';
+   }).join('')+'</div>'+ 
    '<h3>Entradas recentes</h3><div id="receptionRecent"></div></section>';
   const paint=r=>{root.querySelector('#receptionLive').innerHTML=summaryMarkup(r.summary);root.querySelector('#receptionRecent').innerHTML=checkinLines(r,{api,toast});};
   paint(initial);
