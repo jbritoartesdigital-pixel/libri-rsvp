@@ -34,6 +34,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Validar aplicação
         run: |
+          npm run vendor:pdf
           npm run check
-                    npm test
+          npm test
 
