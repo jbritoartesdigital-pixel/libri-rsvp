@@ -153,38 +153,60 @@ export async function parseGuestFile(file,options={}){
  if(name.endsWith('.pdf'))return readPDF(file,options);
  throw Error('Use PDF com texto, Excel .xlsx ou CSV.');
 }
+
+const guestKey=s=>fold(s).replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+/** Read-only preflight: never guess whether unclassified guests are adults. */
+export function planImport(groups=[],existingNames=new Map()){
+ const issues=groups.map(()=>[]),seen=new Map();
+ const note=(i,s)=>{if(!issues[i].includes(s))issues[i].push(s);};
+ groups.forEach((g,i)=>{
+  if(!String(g.group_label||'').trim())note(i,'Informe o nome da família.');
+  if(!g.members?.length)note(i,'Adicione pelo menos uma pessoa.');
+  for(const m of g.members||[]){
+   if(!String(m.name||'').trim()){note(i,'Há uma pessoa sem nome.');continue;}
+   if(!['adult','child'].includes(m.person_type))note(i,'Defina adulto ou criança para todas as pessoas.');
+   const name=guestKey(m.name);
+   if(!name)continue;
+   if(existingNames.has(name))note(i,'Nome já cadastrado: '+m.name+'.');
+   if(seen.has(name)){
+    const original=seen.get(name);
+    note(i,'Nome repetido na lista: '+m.name+'.');
+    note(original,'Nome repetido na lista: '+m.name+'.');
+   }else seen.set(name,i);
+  }
+ });
+ const ready=[],pending=[];
+ for(let i=0;i<groups.length;i++)(issues[i].length?pending:ready).push(i);
+ return {ready,pending,issues};
+}
 export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,onSaved}){
  const base=role==='admin'?'/api/admin/events/'+eventId:'/api/client/'+encodeURIComponent(token);
- let groups=[],file=null,existingNames=new Map(),nameWarnings=[];
+ let groups=[],file=null,existingNames=new Map(),currentPlan={ready:[],pending:[],issues:[]},completed=0;
  const w=modal('Importar lista de convidados',
   '<p>PDF (inclusive digitalizado via OCR), Excel (.xlsx) ou CSV. O arquivo é analisado neste dispositivo, e você revisa as famílias antes de salvar. O OCR pode demorar e não garante nomes corretos.</p>'+
   '<div class="field"><label>Arquivo</label><input id="guestFile" type="file" accept=".pdf,.xlsx,.csv,.txt,application/pdf,text/csv"></div>'+
   '<div id="importStatus" class="notice">Selecione um arquivo para conferir famílias e integrantes.</div>'+
   '<div id="importPreview"></div><div class="actions" style="margin-top:16px">'+
-  '<button id="confirmImport" type="button" class="btn" disabled>Importar famílias revisadas</button>'+
-  '<button id="markAdults" type="button" class="btn secondary" hidden>Classificar indefinidos como adultos</button></div>', '',true);
- const status=w.querySelector('#importStatus'),preview=w.querySelector('#importPreview'),submit=w.querySelector('#confirmImport'),fix=w.querySelector('#markAdults');
+  '<button id="confirmImport" type="button" class="btn" disabled>Importar famílias prontas</button>'+
+  '<button id="reviewPending" type="button" class="btn secondary" hidden>Ver pendências</button></div>', '',true);
+ const status=w.querySelector('#importStatus'),preview=w.querySelector('#importPreview'),submit=w.querySelector('#confirmImport'),fix=w.querySelector('#reviewPending');
  const render=()=>{
-  nameWarnings=[];
-  const current=new Map();
-  groups.forEach((g,i)=>g.members.forEach((m,k)=>{
-   const key=fold(m.name).replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
-   if(!key)return;
-   const found=existingNames.get(key)||[];
-   if(found.length)nameWarnings.push({i,k,name:m.name,details:'Já consta na lista: '+found.join(', ')});
-   const previous=current.get(key)||[];
-   if(previous.some(x=>x.i!==i))nameWarnings.push({i,k,name:m.name,details:'Também aparece em outra família deste arquivo'});
-   current.set(key,[...previous,{i,k}]);
-  }));
-  const count=groups.reduce((n,g)=>n+g.members.length,0),unknown=groups.reduce((n,g)=>n+g.members.filter(m=>m.person_type==='unknown').length,0);
-  status.textContent=groups.length+' família(s), '+count+' pessoa(s). '+(unknown?unknown+' pessoa(s) a classificar. ':'')+(nameWarnings.length?nameWarnings.length+' possível(is) nome(s) repetido(s): revise antes de importar.':'Revise os nomes antes de salvar.');
-  status.style.borderColor=nameWarnings.length?'#bf7233':'';
-  fix.hidden=!unknown;submit.disabled=!groups.length||unknown>0||nameWarnings.length>0||groups.some(g=>!g.primary_name||!g.members.length)||groups.length>300;
+  currentPlan=planImport(groups,existingNames);
+  const count=groups.reduce((n,g)=>n+g.members.length,0);
+  const pendingCount=currentPlan.pending.length, readyCount=currentPlan.ready.length;
+  status.innerHTML='<strong>'+groups.length+' família(s), '+count+' pessoa(s) reconhecida(s).</strong><p>'+readyCount+' família(s) pronta(s) para importar'+
+   (pendingCount?'; '+pendingCount+' precisam de revisão e serão mantidas fora da importação.':' e nenhuma pendência encontrada.')+'</p>'+
+   (completed?'<p>'+completed+' família(s) já importada(s) nesta sessão.</p>':'')+
+   '<p style="font-size:12px">Confira nomes, adultos e crianças antes de salvar. Nomes repetidos ou sem classificação não serão enviados.</p>';
+  status.style.borderColor=pendingCount?'#bf7233':'';
+  fix.hidden=!pendingCount;
+  submit.disabled=!readyCount||readyCount>300;
+  submit.textContent='Importar '+readyCount+' família(s) pronta(s)';
   preview.innerHTML=groups.map((g,i)=>'<section class="card panel import-family" data-group="'+i+'"><label>Família / grupo <input class="family-label" value="'+esc(g.group_label)+'"></label><div class="import-members">'+g.members.map((m,k)=>
    '<div class="import-member" data-member="'+k+'"><label class="import-member-name"><span>Nome do integrante</span><input class="import-name" aria-label="Nome do integrante" value="'+esc(m.name)+'"></label>'+
    '<label class="import-member-kind"><span>Classificação</span><select class="import-kind" aria-label="Classificação do integrante"><option value="unknown" '+(m.person_type==='unknown'?'selected':'')+'>A conferir</option><option value="adult" '+(m.person_type==='adult'?'selected':'')+'>Adulto</option><option value="child" '+(m.person_type==='child'?'selected':'')+'>Criança</option></select></label>'+
    '<button type="button" class="btn secondary small remove-member" aria-label="Remover integrante">Remover</button></div>').join('')+
-   '</div>'+nameWarnings.filter(w=>w.i===i).map(w=>'<div class="notice" style="margin:8px 0;color:#9c4b2b"><strong>Nome igual: '+esc(w.name)+'</strong><p>'+esc(w.details)+'</p></div>').join('')+'<div class="actions"><button class="btn secondary small add-member" type="button">+ Integrante</button><button class="btn secondary small remove-family" type="button">Remover família</button></div></section>').join('');
+   '</div>'+(currentPlan.issues[i].length?'<div class="notice" style="margin:8px 0;border-color:#bf7233"><strong>Revisar antes de importar</strong><p>'+currentPlan.issues[i].map(x=>esc(x)).join(' ')+'</p></div>':'<p class="subtle" style="margin:8px 0">✓ Esta família está pronta.</p>')+'<div class="actions"><button class="btn secondary small add-member" type="button">+ Integrante</button><button class="btn secondary small remove-family" type="button">Remover família</button></div></section>').join('');
   preview.querySelectorAll('[data-group]').forEach(row=>{
    const idx=Number(row.dataset.group);
    row.querySelector('.family-label').onchange=e=>{groups[idx].group_label=e.target.value;groups[idx].primary_name=groups[idx].members[0]?.name||'';render();};
@@ -215,26 +237,49 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   }
   catch(err){groups=[];preview.innerHTML='';status.textContent=err.message;toast(err.message,true);}
  };
- fix.onclick=()=>{groups.forEach(g=>g.members.forEach(m=>{if(m.person_type==='unknown')m.person_type='adult';}));render();};
+ fix.onclick=()=>{
+  const first=preview.querySelector('[data-group="'+currentPlan.pending[0]+'"]');
+  first?.scrollIntoView({behavior:'smooth',block:'center'});
+  first?.querySelector('.import-kind option[value="unknown"]:checked')?.parentElement?.focus({preventScroll:true});
+ };
  submit.onclick=async()=>{
-  // Explicitly edited matching group names represent one family, not separate invitations.
+  currentPlan=planImport(groups,existingNames);
+  const ready=currentPlan.ready.map(i=>({index:i,group:groups[i]}));
+  if(!ready.length)return toast('Nenhuma família está pronta. Use Ver pendências para revisar.',true);
+  if(currentPlan.pending.length&&!confirm('Importar somente '+ready.length+' família(s) pronta(s)? As '+currentPlan.pending.length+' família(s) pendente(s) não serão importadas agora.'))return;
   const merged=new Map();
-  for(const g of groups){
+  for(const {group:g,index} of ready){
    const label=g.group_label.trim(),key=fold(label);
-   if(!merged.has(key))merged.set(key,{group_label:label,members:[]});
-   for(const m of g.members){
-    if(!merged.get(key).members.some(x=>fold(x.name)===fold(m.name)))merged.get(key).members.push({name:m.name.trim(),person_type:m.person_type});
-   }
+   if(!merged.has(key))merged.set(key,{group_label:label,members:[],indices:[]});
+   merged.get(key).indices.push(index);
+   for(const m of g.members)
+    if(!merged.get(key).members.some(x=>fold(x.name)===fold(m.name)))
+     merged.get(key).members.push({name:m.name.trim(),person_type:m.person_type});
   }
-  const rows=[...merged.values()].map(g=>({primary_name:g.members[0]?.name?.trim()||'',group_label:g.group_label,members:g.members,response_status:'pending'}));
-  if(rows.some(g=>!g.primary_name||g.members.some(m=>!m.name||m.person_type==='unknown')))return toast('Revise os dados antes de importar.',true);
-  if(nameWarnings.length){toast('Corrija ou confira os nomes repetidos antes de importar.',true);return;}
+  const submitted=[...merged.values()];
+  const rows=submitted.map(g=>({primary_name:g.members[0]?.name?.trim()||'',group_label:g.group_label,members:g.members,response_status:'pending'}));
+  if(rows.some(g=>!g.primary_name||g.members.some(m=>!m.name||!['adult','child'].includes(m.person_type))))return toast('Há campos inválidos. Revise as pendências.',true);
   submit.disabled=true;
   try{
-   const r=await api(base+'/import',{method:'POST',body:JSON.stringify({rows,file_name:file?.name||'Lista',source_type:file?.name.split('.').pop()||'arquivo'})});
-   if(r.failed?.length)toast(r.created.length+' famílias importadas. '+r.failed.length+' registros ignorados por duplicidade ou erro.',true);
-   else toast(r.created.length+' família(s) importada(s).');
-   w.closeModal();onSaved?.();
-  }catch(err){submit.disabled=false;toast(err.message,true);}
+   const result=await api(base+'/import',{method:'POST',body:JSON.stringify({rows,file_name:file?.name||'Lista',source_type:file?.name.split('.').pop()||'arquivo'})});
+   const createdKeys=new Set((result.created||[]).map(g=>guestKey(g.primary_name)));
+   const succeededIndices=new Set();
+   submitted.forEach(g=>{if(createdKeys.has(guestKey(g.members[0]?.name)))g.indices.forEach(n=>succeededIndices.add(n));});
+   const count=Number(result.created?.length||0);
+   completed+=count;
+   if(count)onSaved?.();
+   if(result.failed?.length)toast(count+' família(s) importada(s). '+result.failed.length+' família(s) rejeitada(s) pelo servidor. Confira a lista.',true);
+   else toast(count+' família(s) importada(s). '+currentPlan.pending.length+' ficaram para revisão.');
+   if(!count){render();return;}
+   groups=groups.filter((_,i)=>!succeededIndices.has(i));
+   if(!groups.length){w.closeModal();return;}
+   for(const g of submitted.filter(g=>createdKeys.has(guestKey(g.members[0]?.name))))
+    for(const m of g.members){
+     const key=guestKey(m.name);
+     existingNames.set(key,[g.group_label]);
+    }
+   render();
+   fix.hidden=!currentPlan.pending.length;
+  }catch(err){render();toast(err.message,true);}
  };
 }
