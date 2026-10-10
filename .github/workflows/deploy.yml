@@ -44,6 +44,24 @@ jobs:
       - name: Conferir pacote Cloudflare sem publicar
         run: npx wrangler deploy --dry-run --outdir /tmp/libri-rsvp-release
 
+      # Trava crítica antes de qualquer publicação: não acessa D1/R2 real.
+      - name: Preparar Chrome e Playwright isoladamente
+        run: |
+          npm install --prefix /tmp/libri-browser-deps --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.58.2
+          ln -s /tmp/libri-browser-deps/node_modules/playwright node_modules/playwright
+
+      - name: Impedir deploy com falha mobile, login ou diagnóstico
+        run: node tests/etapa2-browser.mjs
+
+      - name: Guardar diagnóstico da Etapa 2
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: libri-rsvp-etapa2-deploy-${{ github.run_id }}
+          path: .artifacts/etapa2-rsvp/
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Publicar Worker e arquivos estáticos
         uses: cloudflare/wrangler-action@v4
         with:
