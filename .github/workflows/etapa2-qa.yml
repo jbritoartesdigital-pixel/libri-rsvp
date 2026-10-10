@@ -1,0 +1,47 @@
+name: Etapa 2 RSVP | Android e visual (sem deploy)
+on:
+  pull_request:
+    paths:
+      - 'public/**'
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/etapa2-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependências, check e testes existentes
+        run: |
+          npm install --no-audit --no-fund
+          npm run vendor:pdf
+          npm run check
+          npm test
+      - name: Playwright isolado sem alterar package-lock
+        run: |
+          npm install --prefix /tmp/libri-browser-deps --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.58.2
+          ln -s /tmp/libri-browser-deps/node_modules/playwright node_modules/playwright
+      - name: Simular login, testar Android e comparar com main
+        env:
+          LIBRI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node tests/etapa2-browser.mjs
+      - name: Preservar evidências sanitizadas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: libri-rsvp-etapa2-${{ github.run_id }}
+          path: .artifacts/etapa2-rsvp/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Dry-run do Worker
+        run: npx wrangler deploy --dry-run --outdir /tmp/libri-rsvp-qa
