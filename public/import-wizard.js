@@ -96,7 +96,7 @@ export function pdfTableRows(blocks){
   const text=items.map(i=>i.s).join(' ').toLowerCase();
   if(text.includes('grupo / nome do convite')&&text.includes('pessoas inclu')){
    const find=part=>items.find(i=>fold(i.s).includes(part))?.x;
-   const positions=['nº','grupo / nome','pessoas inclui','adultos','crianças','total'].map(find);
+   const positions=['nº','grupo / nome','pessoas inclui','adultos','criancas','total'].map(find);
    if(positions.some(x=>!Number.isFinite(x))){colPositions=null;continue;}
    colPositions=positions;seen=true;lastData=null;
    rows.push(['Nº','Grupo / nome do convite','Pessoas incluídas','Adultos','Crianças','Total']);
