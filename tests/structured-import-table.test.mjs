@@ -46,6 +46,6 @@ test('ordinary three-column CSV parsing remains unchanged',()=>{
 });
 test('import button blocking shows clear reason',async()=>{
  const src=await readFile(new URL('../public/import-wizard.js',import.meta.url),'utf8');
- assert.match(src,/O botão de importação ficará desativado até resolver as pendências/);
- assert.match(src,/sem quantidade definida ficaram fora/);
+ assert.match(src,/família\(s\) pronta\(s\) para importar/);
+ assert.match(src,/sem quantidade definida ficaram de fora/);
 });
