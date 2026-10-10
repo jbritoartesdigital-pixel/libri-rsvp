@@ -18,8 +18,115 @@ export function parseDelimited(source){
 }
 const fold=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const splitPeople=s=>String(s||'').split(/\s*(?:\n|[|]+|,\s*|\s+e\s+)\s*/i).map(x=>x.trim()).filter(Boolean);
+// Libri-style multi-column tables include a group, individual names and numerical adult/child counts.
+// Countless/incomplete rows are held aside instead of guessing somebody's age or family size.
+export function parseEventCountTable(rows){
+ const result=[],skipped=[];
+ let columns=null,seen=false;
+ for(const row of rows||[]){
+  const cells=(row||[]).map(x=>String(x??'').replace(/\s+/g,' ').trim());
+  const headers=cells.map(fold);
+  if(headers.some(x=>x.includes('grupo')&&x.includes('nome'))&&
+     headers.some(x=>x.includes('pessoas incluidas'))&&
+     headers.some(x=>x==='adultos')&&headers.some(x=>x==='criancas')){
+   const locate=p=>headers.findIndex(p);
+   columns={group:locate(x=>x.includes('grupo')&&x.includes('nome')),
+    persons:locate(x=>x.includes('pessoas incluidas')),adults:headers.indexOf('adultos'),
+    children:headers.indexOf('criancas')};
+   seen=true;continue;
+  }
+  if(headers.some(x=>x==='nome')&&headers.some(x=>x==='adultos')&&!headers.some(x=>x.includes('pessoas incluidas'))){
+   columns=null;continue; // an independent incomplete guest list, e.g. Bolivia
+  }
+  if(!columns||cells.length<4)continue;
+  const group=cells[columns.group]||'',membersText=cells[columns.persons]||'';
+  const adultText=cells[columns.adults]||'',childText=cells[columns.children]||'';
+  if(!group||!membersText)continue;
+  if(!/^\d+$/.test(adultText)||!/^\d+$/.test(childText)){
+   if(/a confirmar|não informad|nao informad/i.test(adultText+' '+childText))
+    skipped.push(group);
+   continue;
+  }
+  const countAdults=Number(adultText),countChildren=Number(childText);
+  if(countAdults+countChildren<1||countAdults+countChildren>100)continue;
+  const named=[],unnamedChildren=[];
+  for(const value of membersText.split(';').map(x=>x.trim()).filter(Boolean)){
+   const childMarker=value.match(/^(\d+)\s+(filh[oa]s?|crian[çc]as?)\b/i);
+   if(childMarker){
+    const label=/filha/i.test(childMarker[2])?'Filha':/filho/i.test(childMarker[2])?'Filho':'Criança';
+    for(let n=0;n<Number(childMarker[1])&&n<100;n++)
+      unnamedChildren.push(label+' '+(n+1)+' ('+group+': nome pendente)');
+   }else if(/^pai\s+e\s+m[aã]e$/i.test(value)){
+    named.push('Pai ('+group+': nome pendente)','Mãe ('+group+': nome pendente)');
+   }else if(/^(?:espos[ao]|noiv[ao]|pai|m[aã]e|noiv[ao]\s+de\s+.+)$/i.test(value)){
+    named.push(value+' ('+group+': nome pendente)');
+   }else named.push(value);
+  }
+  if(named.length>countAdults+countChildren||unnamedChildren.length>countChildren){
+   skipped.push(group);continue;
+  }
+  const adults=named.slice(0,countAdults),children=named.slice(countAdults).concat(unnamedChildren);
+  while(adults.length<countAdults)
+   adults.push('Adulto '+(adults.length+1)+' ('+group+': nome pendente)');
+  while(children.length<countChildren)
+   children.push('Criança '+(children.length+1)+' ('+group+': nome pendente)');
+  if(children.length!==countChildren){skipped.push(group);continue;}
+  const members=[...adults.map(name=>({name,person_type:'adult'})),
+                 ...children.map(name=>({name,person_type:'child'}))];
+  result.push({group_label:group,primary_name:members[0].name,members,source_lines:[]});
+ }
+ if(!seen)return null;
+ Object.defineProperty(result,'skippedGroups',{value:skipped,enumerable:false,configurable:true});
+ return result;
+}
+// Extract a PDF table using text coordinates. Keeps individual columns separate,
+// unlike joining an entire printed row into one unclassifiable guest name.
+export function pdfTableRows(blocks){
+ const ordered=[...(blocks||[])].sort((a,b)=>Math.abs(b.y-a.y)>3?b.y-a.y:a.x-b.x);
+ const lines=[];
+ for(const item of ordered){
+  let line=lines[lines.length-1];
+  if(!line||Math.abs(line.y-item.y)>4){line={y:item.y,items:[]};lines.push(line);}
+  line.items.push(item);
+ }
+ const rows=[];
+ let colPositions=null,lastData=null,seen=false;
+ for(const line of lines){
+  const items=line.items.sort((a,b)=>a.x-b.x);
+  const text=items.map(i=>i.s).join(' ').toLowerCase();
+  if(text.includes('grupo / nome do convite')&&text.includes('pessoas inclu')){
+   const find=part=>items.find(i=>fold(i.s).includes(part))?.x;
+   const positions=['nº','grupo / nome','pessoas inclui','adultos','criancas','total'].map(find);
+   if(positions.some(x=>!Number.isFinite(x))){colPositions=null;continue;}
+   colPositions=positions;seen=true;lastData=null;
+   rows.push(['Nº','Grupo / nome do convite','Pessoas incluídas','Adultos','Crianças','Total']);
+   continue;
+  }
+  if(/(?:fam[ií]lia e amigos da bol[ií]via|quantidade de pessoas por convite)/i.test(text) ||
+      (colPositions&&/\bnome\b/.test(text)&&text.includes('adultos')&&text.includes('crianças')&&!text.includes('grupo'))){
+   colPositions=null;lastData=null;continue;
+  }
+  if(!colPositions)continue;
+  const cells=['','','','','',''];
+  for(const item of items){
+   let column=0;
+   for(let i=1;i<colPositions.length;i++)
+    if(item.x>=colPositions[i]-2)column=i;
+   cells[column]+=(cells[column]?' ':'')+item.s;
+  }
+  const number=cells[0].trim();
+  if(/^\d+$/.test(number)){rows.push(cells);lastData=cells;}
+  else if(lastData&&(cells[1]||cells[2]||cells[3]||cells[4]||cells[5])){
+   // Wrapped content (long family names) belongs to the last numbered row.
+   for(let k=1;k<6;k++)if(cells[k])lastData[k]+=(lastData[k]?' ':'')+cells[k];
+  }
+ }
+ return seen?rows:null;
+}
 export function groupRows(rows){
  if(!rows?.length)return [];
+ const table=parseEventCountTable(rows);
+ if(table)return table;
  const first=rows[0]?.map(fold)||[];
  const idx=word=>first.findIndex(h=>word.some(x=>h.includes(x)));
  const family=idx(['familia','grupo','mesa']),name=idx(['nome','convidad','integrante','pessoa']),kind=idx(['tipo','idade','categoria']),adults=idx(['adultos','maiores']),children=idx(['criancas','menores']),responsible=idx(['responsavel','titular']);
@@ -117,6 +224,8 @@ async function readPDF(file,options={}){
   for(let p=1;p<=doc.numPages;p++){
    const page=await doc.getPage(p),t=await page.getTextContent();
    const blocks=t.items.filter(i=>i.str?.trim()).map(i=>({x:i.transform[4],y:i.transform[5],s:i.str.trim()}));
+   const tableRows=pdfTableRows(blocks);
+   if(tableRows){rows.push(...tableRows,[]);continue;}
    blocks.sort((a,b)=>Math.abs(b.y-a.y)>3?b.y-a.y:a.x-b.x);
    let line=null,lastY=null;
    for(const block of blocks){
@@ -198,6 +307,10 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
    (pendingCount?'; '+pendingCount+' precisam de revisão e serão mantidas fora da importação.':' e nenhuma pendência encontrada.')+'</p>'+
    (completed?'<p>'+completed+' família(s) já importada(s) nesta sessão.</p>':'')+
    '<p style="font-size:12px">Confira nomes, adultos e crianças antes de salvar. Nomes repetidos ou sem classificação não serão enviados.</p>';
+  const placeholders=groups.reduce((n,g)=>n+g.members.filter(m=>/nome pendente/i.test(m.name)).length,0);
+  const skipped=groups.skippedGroups||[];
+  if(skipped.length)status.innerHTML+='<p><strong>'+skipped.length+' família(s) sem quantidade definida ficaram de fora:</strong> '+skipped.map(esc).join(', ')+'.</p>';
+  if(placeholders)status.innerHTML+='<p><strong>Atenção:</strong> '+placeholders+' integrante(s) têm identificação temporária (nome pendente). Revise antes de confirmar.</p>';
   status.style.borderColor=pendingCount?'#bf7233':'';
   fix.hidden=!pendingCount;
   submit.disabled=!readyCount||readyCount>300;
@@ -247,6 +360,12 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   const ready=currentPlan.ready.map(i=>({index:i,group:groups[i]}));
   if(!ready.length)return toast('Nenhuma família está pronta. Use Ver pendências para revisar.',true);
   if(currentPlan.pending.length&&!confirm('Importar somente '+ready.length+' família(s) pronta(s)? As '+currentPlan.pending.length+' família(s) pendente(s) não serão importadas agora.'))return;
+  const placeholders=ready.reduce((n,x)=>n+x.group.members.filter(m=>/nome pendente/i.test(m.name)).length,0);
+  const skipped=groups.skippedGroups||[];
+  if((placeholders||skipped.length)&&!confirm(
+   'Atenção: '+placeholders+' pessoa(s) possuem nome temporário e '+skipped.length+
+   ' família(s) sem quantidade definida ficarão de fora.\n\nDeseja importar os grupos prontos com essas identificações provisórias?'
+  ))return;
   const merged=new Map();
   for(const {group:g,index} of ready){
    const label=g.group_label.trim(),key=fold(label);
