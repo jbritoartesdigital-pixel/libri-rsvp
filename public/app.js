@@ -1,4 +1,4 @@
-import {openGuestImport} from './import-wizard.js?v=20261009-mobile-ocr-qr-readable-v4';
+import {openGuestImport} from './import-wizard.js?v=20261010-partial-safe-import-v1';
 import {passkeyLogin,passkeysModal,showImportHistory,mountFeatureSettings,receptionPage,publicQrPage} from './feature-ui.js?v=20261009-mobile-ocr-qr-readable-v4';
 const app=document.querySelector("#app"),toastEl=document.querySelector("#toast"),path=location.pathname;
 let toastTimer,suggestTimer,appearanceDirty=false,activeInterfaceLanguage="pt-BR";
