@@ -346,6 +346,13 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   const rows=[...merged.values()].map(g=>({primary_name:g.members[0]?.name?.trim()||'',group_label:g.group_label,members:g.members,response_status:'pending'}));
   if(rows.some(g=>!g.primary_name||g.members.some(m=>!m.name||m.person_type==='unknown')))return toast('Revise os dados antes de importar.',true);
   if(nameWarnings.length){toast('Corrija ou confira os nomes repetidos antes de importar.',true);return;}
+  const placeholders=rows.flatMap(g=>g.members.filter(m=>/nome pendente/i.test(m.name)));
+  const skipped=groups.skippedGroups||[];
+  if((placeholders.length||skipped.length)&&!confirm(
+   'Revisão necessária: '+placeholders.length+' pessoa(s) estão identificadas como nome pendente e '+
+   skipped.length+' família(s) sem quantidade definida não serão importadas.\n\n'+
+   'Os nomes pendentes são apenas identificadores temporários, não os nomes reais. Deseja continuar com esta lista revisada?'
+  ))return;
   submit.disabled=true;
   try{
    const r=await api(base+'/import',{method:'POST',body:JSON.stringify({rows,file_name:file?.name||'Lista',source_type:file?.name.split('.').pop()||'arquivo'})});
