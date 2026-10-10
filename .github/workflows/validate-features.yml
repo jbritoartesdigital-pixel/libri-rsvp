@@ -6,6 +6,7 @@ on:
       - feat/rsvp-import-passkeys-checkin-20261009
       - fix/libri-mobile-cache-and-long-names-20261009
       - fix/mobile-import-checkin-layout-20261009
+      - fix/rsvp-structured-table-on-latest-20261010
       - fix/rsvp-import-partial-valid-families-20261010
   workflow_dispatch:
 
