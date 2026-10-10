@@ -224,6 +224,8 @@ async function readPDF(file,options={}){
   for(let p=1;p<=doc.numPages;p++){
    const page=await doc.getPage(p),t=await page.getTextContent();
    const blocks=t.items.filter(i=>i.str?.trim()).map(i=>({x:i.transform[4],y:i.transform[5],s:i.str.trim()}));
+   const tableRows=pdfTableRows(blocks);
+   if(tableRows){rows.push(...tableRows,[]);continue;}
    blocks.sort((a,b)=>Math.abs(b.y-a.y)>3?b.y-a.y:a.x-b.x);
    let line=null,lastY=null;
    for(const block of blocks){
@@ -269,7 +271,7 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   '<div id="importStatus" class="notice">Selecione um arquivo para conferir famílias e integrantes.</div>'+
   '<div id="importPreview"></div><div class="actions" style="margin-top:16px">'+
   '<button id="confirmImport" type="button" class="btn" disabled>Importar famílias revisadas</button>'+
-  '<button id="markAdults" type="button" class="btn secondary" hidden>Classificar indefinidos como adultos</button></div>', '',true);
+  '<button id="markAdults" type="button" class="btn secondary" hidden>Marcar indefinidos como adultos (somente se confirmado)</button></div>', '',true);
  const status=w.querySelector('#importStatus'),preview=w.querySelector('#importPreview'),submit=w.querySelector('#confirmImport'),fix=w.querySelector('#markAdults');
  const render=()=>{
   nameWarnings=[];
@@ -284,9 +286,17 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
    current.set(key,[...previous,{i,k}]);
   }));
   const count=groups.reduce((n,g)=>n+g.members.length,0),unknown=groups.reduce((n,g)=>n+g.members.filter(m=>m.person_type==='unknown').length,0);
-  status.textContent=groups.length+' família(s), '+count+' pessoa(s). '+(unknown?unknown+' pessoa(s) a classificar. ':'')+(nameWarnings.length?nameWarnings.length+' possível(is) nome(s) repetido(s): revise antes de importar.':'Revise os nomes antes de salvar.');
+  const skipped=groups.skippedGroups||[];
+  const placeholders=groups.reduce((n,g)=>n+g.members.filter(m=>/nome pendente/i.test(m.name)).length,0);
+  status.textContent=groups.length+' família(s), '+count+' pessoa(s). '+
+   (skipped.length?skipped.length+' grupo(s) sem quantidade definida ficaram fora: '+skipped.join(', ')+'. ':'')+
+   (placeholders?placeholders+' nome(s) pendente(s) de confirmação. ':'')+
+   (unknown?unknown+' pessoa(s) sem classificação. Revise as categorias antes de salvar. ':'')+
+   (nameWarnings.length?nameWarnings.length+' nome(s) repetido(s). Corrija os nomes duplicados antes de importar. ':'')+
+   ((!unknown&&!nameWarnings.length)?'Confira os nomes e clique em Importar famílias revisadas.':'O botão de importação ficará desativado até resolver as pendências.');
   status.style.borderColor=nameWarnings.length?'#bf7233':'';
   fix.hidden=!unknown;submit.disabled=!groups.length||unknown>0||nameWarnings.length>0||groups.some(g=>!g.primary_name||!g.members.length)||groups.length>300;
+  submit.title=submit.disabled?'Revise nomes repetidos, classificações ou famílias vazias. Veja a mensagem acima.':'';
   preview.innerHTML=groups.map((g,i)=>'<section class="card panel import-family" data-group="'+i+'"><label>Família / grupo <input class="family-label" value="'+esc(g.group_label)+'"></label><div class="import-members">'+g.members.map((m,k)=>
    '<div class="import-member" data-member="'+k+'"><label class="import-member-name"><span>Nome do integrante</span><input class="import-name" aria-label="Nome do integrante" value="'+esc(m.name)+'"></label>'+
    '<label class="import-member-kind"><span>Classificação</span><select class="import-kind" aria-label="Classificação do integrante"><option value="unknown" '+(m.person_type==='unknown'?'selected':'')+'>A conferir</option><option value="adult" '+(m.person_type==='adult'?'selected':'')+'>Adulto</option><option value="child" '+(m.person_type==='child'?'selected':'')+'>Criança</option></select></label>'+
