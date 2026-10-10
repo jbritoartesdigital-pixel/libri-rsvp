@@ -262,9 +262,9 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   submit.disabled=true;
   try{
    const result=await api(base+'/import',{method:'POST',body:JSON.stringify({rows,file_name:file?.name||'Lista',source_type:file?.name.split('.').pop()||'arquivo'})});
-   const failedIndices=new Set((result.failed||[]).map(x=>Number(x.index)).filter(Number.isInteger));
+   const createdKeys=new Set((result.created||[]).map(g=>guestKey(g.primary_name)));
    const succeededIndices=new Set();
-   submitted.forEach((g,i)=>{if(!failedIndices.has(i))g.indices.forEach(n=>succeededIndices.add(n));});
+   submitted.forEach(g=>{if(createdKeys.has(guestKey(g.members[0]?.name)))g.indices.forEach(n=>succeededIndices.add(n));});
    const count=Number(result.created?.length||0);
    completed+=count;
    if(count)onSaved?.();
@@ -273,7 +273,7 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
    if(!count){render();return;}
    groups=groups.filter((_,i)=>!succeededIndices.has(i));
    if(!groups.length){w.closeModal();return;}
-   for(const g of submitted.filter((_,i)=>!failedIndices.has(i)))
+   for(const g of submitted.filter(g=>createdKeys.has(guestKey(g.members[0]?.name))))
     for(const m of g.members){
      const key=guestKey(m.name);
      existingNames.set(key,[g.group_label]);
