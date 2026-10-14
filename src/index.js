@@ -2,6 +2,7 @@ import {passkeyRoutes} from './passkeys.js';
 import {guestExtraRoutes,capacityCheck,queueWaitlist} from './guest-extras.js';
 import {qrRoutes,assignQr} from './checkin.js';
 import {privacyRoutes} from './privacy.js';
+import {normalizeChildAge} from './child-age.js';
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -1845,6 +1846,12 @@ async function getSummary(env, eventId) {
       SUM(CASE WHEN gm.attendance_status = 'yes' THEN 1 ELSE 0 END) AS people_confirmed,
       SUM(CASE WHEN gm.attendance_status = 'yes' AND gm.person_type = 'adult' THEN 1 ELSE 0 END) AS adults_confirmed,
       SUM(CASE WHEN gm.attendance_status = 'yes' AND gm.person_type = 'child' THEN 1 ELSE 0 END) AS children_confirmed,
+      SUM(CASE WHEN gm.attendance_status = 'yes' AND gm.person_type = 'child' AND gm.child_age BETWEEN 0 AND 2 THEN 1 ELSE 0 END) AS age_0_2,
+      SUM(CASE WHEN gm.attendance_status = 'yes' AND gm.person_type = 'child' AND gm.child_age BETWEEN 3 AND 5 THEN 1 ELSE 0 END) AS age_3_5,
+      SUM(CASE WHEN gm.attendance_status = 'yes' AND gm.person_type = 'child' AND gm.child_age BETWEEN 6 AND 9 THEN 1 ELSE 0 END) AS age_6_9,
+      SUM(CASE WHEN gm.attendance_status = 'yes' AND gm.person_type = 'child' AND gm.child_age BETWEEN 10 AND 12 THEN 1 ELSE 0 END) AS age_10_12,
+      SUM(CASE WHEN gm.attendance_status = 'yes' AND gm.person_type = 'child' AND gm.child_age BETWEEN 13 AND 17 THEN 1 ELSE 0 END) AS age_13_17,
+      SUM(CASE WHEN gm.attendance_status = 'yes' AND gm.person_type = 'child' AND gm.child_age IS NULL THEN 1 ELSE 0 END) AS age_unknown,
       COUNT(*) AS people_registered
     FROM guest_members gm
     INNER JOIN guests g ON g.id = gm.guest_id
@@ -1863,6 +1870,7 @@ async function getSummary(env, eventId) {
     people_confirmed: Number(memberRow?.people_confirmed || 0),
     adults_confirmed: Number(memberRow?.adults_confirmed || 0),
     children_confirmed: Number(memberRow?.children_confirmed || 0),
+    child_age_bands: {"0-2":Number(memberRow?.age_0_2||0),"3-5":Number(memberRow?.age_3_5||0),"6-9":Number(memberRow?.age_6_9||0),"10-12":Number(memberRow?.age_10_12||0),"13-17":Number(memberRow?.age_13_17||0),unknown:Number(memberRow?.age_unknown||0)},
     people_registered: Number(memberRow?.people_registered || 0),
   };
 }
@@ -2484,6 +2492,7 @@ async function createGuest(env, event, body, source) {
   }
 
   const members = normalizeManagedMembers(body.members, body.response_status);
+  assertValidChildAges(members);
   const status = deriveGroupStatus(members, allowedStatus(body.response_status));
   const createdAt = now();
   const groupLabel = cleanOptionalText(body.group_label, 150);
@@ -2567,9 +2576,10 @@ async function createGuest(env, event, body, source) {
           updated_at,
           deleted_at,
           attendance_status,
-          is_preapproved
+          is_preapproved,
+          child_age
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
       `).bind(
         crypto.randomUUID(),
         id,
@@ -2582,7 +2592,8 @@ async function createGuest(env, event, body, source) {
         createdAt,
         createdAt,
         member.attendance_status,
-        member.is_preapproved === false ? 0 : 1
+        member.is_preapproved === false ? 0 : 1,
+        member.child_age ?? null
       )
     );
   });
@@ -2644,6 +2655,7 @@ async function updateGuest(env, event, guestId, body) {
     : normalizeManagedMembers(body.members, requestedStatus);
 
 
+  assertValidChildAges(members);
   const status = deriveGroupStatus(members, requestedStatus);
 
 
@@ -2766,6 +2778,7 @@ async function syncManagedGuestMembers(env, eventId, guestId, members, existingM
             normalized_name = ?,
             person_type = ?,
             attendance_status = ?,
+            child_age = ?,
             is_primary = ?,
             sort_order = ?,
             updated_at = ?,
@@ -2776,6 +2789,7 @@ async function syncManagedGuestMembers(env, eventId, guestId, members, existingM
           normalizeName(member.name),
           member.person_type,
           member.attendance_status,
+          member.person_type==='child'?(member.child_age===undefined?(existing.child_age??null):member.child_age):null,
           index === 0 ? 1 : 0,
           index,
           currentTime,
@@ -2804,9 +2818,10 @@ async function syncManagedGuestMembers(env, eventId, guestId, members, existingM
             updated_at,
             deleted_at,
             attendance_status,
-            is_preapproved
+            is_preapproved,
+            child_age
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 1)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 1, ?)
         `).bind(
           id,
           guestId,
@@ -2818,7 +2833,8 @@ async function syncManagedGuestMembers(env, eventId, guestId, members, existingM
           index,
           currentTime,
           currentTime,
-          member.attendance_status
+          member.attendance_status,
+          member.child_age ?? null
         )
       );
     }
@@ -3144,6 +3160,7 @@ function publicGuest(guest, event) {
       person_type: member.person_type,
       attendance_status: member.attendance_status,
       is_preapproved: member.is_preapproved,
+      child_age: member.child_age,
     })),
   };
 }
@@ -3561,6 +3578,7 @@ function normalizePublicNewMembers(value) {
       name: String(item?.name || "").trim().slice(0, 150),
       person_type: item?.person_type === "child" ? "child" : "adult",
       attendance_status: normalizeAttendanceStatus(item?.attendance_status || "yes"),
+      child_age: normalizeChildAge(item?.child_age,item?.person_type),
     }))
     .filter((item) => item.name)
     .slice(0, 100);
@@ -3578,6 +3596,7 @@ function normalizePublicFreeMembers(value) {
       person_type: item?.person_type === "child" ? "child" : "adult",
       attendance_status: "yes",
       is_preapproved: Boolean(item?.is_preapproved),
+      child_age: normalizeChildAge(item?.child_age,item?.person_type),
     }))
     .filter((item) => item.name)
     .slice(0, 100);
@@ -3996,6 +4015,7 @@ function serializeMember(row) {
     attendance_status: normalizeAttendanceStatus(row.attendance_status),
     is_preapproved: row.is_preapproved === undefined ? true : Boolean(row.is_preapproved),
     is_primary: Boolean(row.is_primary),
+    child_age: row.person_type==='child'?(row.child_age==null?null:Number(row.child_age)):null,
     sort_order: Number(row.sort_order || 0),
   };
 }
@@ -4025,6 +4045,7 @@ function normalizeExtraFields(fields) {
     dietary: Boolean(fields?.dietary),
     notes: Boolean(fields?.notes),
     love_message: fields?.love_message !== false,
+    child_age: Boolean(fields?.child_age),
   };
 }
 
@@ -4122,12 +4143,22 @@ function normalizeManagedMembers(value, fallbackStatus = "pending") {
         item?.attendance_status ?? defaultAttendance
       ),
       is_preapproved: item?.is_preapproved === undefined ? true : Boolean(item.is_preapproved),
+      child_age: Object.prototype.hasOwnProperty.call(item || {}, 'child_age') ? normalizeChildAge(item.child_age,item?.person_type) : undefined,
     }))
     .filter((item) => item.name)
     .slice(0, 100);
 }
 
 
+function assertValidChildAges(members){
+ if((members||[]).some(m=>Number.isNaN(m.child_age)))throw new HttpError(400,"Informe uma idade válida de 0 a 17 anos.");
+}
+function requirePublicChildAges(event,members){
+ assertValidChildAges(members);
+ if(!normalizeExtraFields(safeJson(event.extra_fields,{})).child_age)return;
+ const missing=(members||[]).find(m=>m.person_type==='child'&&m.attendance_status==='yes'&&m.child_age==null);
+ if(missing)throw new HttpError(400,`Informe a idade de ${missing.name}, em anos completos (0 a 17).`);
+}
 function normalizeAttendanceStatus(value) {
   const status = String(value || "pending").toLowerCase();
   return ["yes", "no", "pending"].includes(status) ? status : "pending";
