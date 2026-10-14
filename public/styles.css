@@ -3545,3 +3545,15 @@ video[hidden] {
  .guest-member { grid-template-columns:27px minmax(0,1fr); min-width:0; }
  .guest-member > .badge { grid-column:2; justify-self:start; max-width:100%; white-space:normal; }
 }
+
+
+/* Child age is a separate, full-width question for each attending child. */
+.public-person .public-age-field,
+.member-editor-row .public-age-field {
+  grid-column: 1 / -1;
+  width: min(100%, 310px);
+  min-width: 0;
+  margin: 2px 0 6px;
+}
+.public-age-field[hidden] { display: none !important; }
+.public-age-field input { max-width: 100%; }
