@@ -8,7 +8,7 @@ import {capacityCheck,queueWaitlist,guestExtraRoutes} from '../src/guest-extras.
 function fixture(){
  const db=new DatabaseSync(':memory:');
  return {db,async init(){
-  for(const file of ['0001_init.sql','0002_v1.sql','0003_v2.sql','0004_guest_type_limits.sql','0005_import_passkeys_checkin.sql'])
+  for(const file of ['0001_init.sql','0002_v1.sql','0003_v2.sql','0004_guest_type_limits.sql','0005_import_passkeys_checkin.sql','0007_child_ages.sql'])
    db.exec(await readFile(new URL('../migrations/'+file,import.meta.url),'utf8'));
  },env:{DB:{
   prepare(sql){return {bind(...args){const statement=db.prepare(sql);return {

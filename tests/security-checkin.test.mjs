@@ -7,7 +7,7 @@ import {passkeyRoutes} from '../src/passkeys.js';
 
 async function makeDB(){
  const db=new DatabaseSync(':memory:');
- for(const filename of ['0001_init.sql','0002_v1.sql','0003_v2.sql','0004_guest_type_limits.sql','0005_import_passkeys_checkin.sql'])
+ for(const filename of ['0001_init.sql','0002_v1.sql','0003_v2.sql','0004_guest_type_limits.sql','0005_import_passkeys_checkin.sql','0007_child_ages.sql'])
   db.exec(await readFile(new URL('../migrations/'+filename,import.meta.url),'utf8'));
  const env={DB:{
   prepare(sql){return {bind(...args){const statement=db.prepare(sql);return {
