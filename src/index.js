@@ -3200,6 +3200,7 @@ async function submitListRsvp(env, event, body) {
 
   const listBehavior = normalizeListBehavior(event.list_behavior);
   const responseMap = new Map();
+  const responseAgeMap = new Map();
 
 
   if (Array.isArray(body.member_responses)) {
@@ -3207,6 +3208,7 @@ async function submitListRsvp(env, event, body) {
       const id = String(item?.id || "").trim();
       if (!id) continue;
       responseMap.set(id, normalizeAttendanceStatus(item?.attendance_status));
+      if(item?.child_age!==undefined)responseAgeMap.set(id,normalizeChildAge(item.child_age,existing.members.find(m=>m.id===id)?.person_type));
     }
   }
 
@@ -3242,6 +3244,7 @@ async function submitListRsvp(env, event, body) {
 
     projectedExisting.push({
       ...member,
+      child_age: responseAgeMap.has(member.id)?responseAgeMap.get(member.id):member.child_age,
       attendance_status: responseMap.has(member.id)
         ? responseMap.get(member.id)
         : familyFallback
@@ -3308,6 +3311,7 @@ async function submitListRsvp(env, event, body) {
 
 
   const projectedMembers = [...projectedExisting, ...newMembers];
+  requirePublicChildAges(event,projectedMembers);
   const limit = effectiveGuestLimit(event, existing);
   const typeLimits = guestTypeLimits(existing);
   const confirmedMembers = projectedMembers.filter(
@@ -3375,10 +3379,11 @@ async function submitListRsvp(env, event, body) {
     statements.push(
       env.DB.prepare(`
         UPDATE guest_members
-        SET attendance_status = ?, updated_at = ?
+        SET attendance_status = ?, child_age = ?, updated_at = ?
         WHERE id = ? AND guest_id = ? AND event_id = ? AND deleted_at IS NULL
       `).bind(
         projected?.attendance_status || member.attendance_status,
+        member.person_type==='child'?(projected?.child_age??null):null,
         currentTime,
         member.id,
         existing.id,
@@ -3407,9 +3412,10 @@ async function submitListRsvp(env, event, body) {
           updated_at,
           deleted_at,
           attendance_status,
-          is_preapproved
+          is_preapproved,
+          child_age
         )
-        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NULL, ?, 0)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NULL, ?, 0, ?)
       `).bind(
         crypto.randomUUID(),
         existing.id,
@@ -3420,7 +3426,8 @@ async function submitListRsvp(env, event, body) {
         sortOrder++,
         currentTime,
         currentTime,
-        member.attendance_status
+        member.attendance_status,
+        member.child_age
       )
     );
   }
@@ -3511,6 +3518,8 @@ async function submitFreeRsvp(env, event, body) {
     members = normalizePublicFreeMembers(body.members);
 
 
+    requirePublicChildAges(event,members);
+
     if (!members.length) {
       throw new HttpError(400, "Informe pelo menos uma pessoa que irá à festa.");
     }
@@ -3533,6 +3542,7 @@ async function submitFreeRsvp(env, event, body) {
           person_type: member.person_type,
           attendance_status: "no",
           is_preapproved: member.is_preapproved,
+          child_age: member.child_age,
         }))
       : [];
   }
@@ -3823,7 +3833,7 @@ function csvResponse(guests, filename, language = "pt-BR") {
 
     const children = guest.members
       .filter((member) => member.person_type === "child")
-      .map((member) => `${member.name} (${attendanceLabel(member.attendance_status, language)})`)
+      .map((member) => `${member.name}${member.child_age==null?"":` - ${member.child_age} ${language==="en"?"years":"anos"}`} (${attendanceLabel(member.attendance_status, language)})`)
       .join(" | ");
 
 
