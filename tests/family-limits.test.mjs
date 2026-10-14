@@ -32,9 +32,10 @@ test('valores fora do intervalo e entradas parciais não são arredondados silen
 
 test('formulário de lista flexível usa teclado numérico sem input nativo number',async()=>{
  const source=await readFile(new URL('../public/app.js',import.meta.url),'utf8');
+ const flexibleMarkup=source.split(':!isList?')[0]; // O modo livre mantém o seu campo próprio.
  for(const name of ['familyLimit','familyAdultLimit','familyChildLimit']){
-  assert.match(source,new RegExp('id="'+name+'" type="text" inputmode="numeric"'));
-  assert.doesNotMatch(source,new RegExp('id="'+name+'" type="number"'));
+  assert.match(flexibleMarkup,new RegExp('id="'+name+'" type="text" inputmode="numeric"'));
+  assert.doesNotMatch(flexibleMarkup,new RegExp('id="'+name+'" type="number"'));
  }
  assert.match(source,/parseFamilyLimit\(childLimitInput\?\.value,\{minimum:0\}\)/);
  assert.match(source,/effectiveFamilyLimit\(limitInput\?\.value,event\.max_people_per_rsvp\)/);
