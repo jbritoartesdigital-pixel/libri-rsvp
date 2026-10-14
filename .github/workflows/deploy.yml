@@ -1,18 +1,9 @@
 name: Deploy Libri RSVP
 
-# Publish only the exact reviewed main merge. D1 migrations 0005/0006
+# Production publication is manual only. D1 migrations 0005/0006
 # were applied separately in the Cloudflare dashboard and verified.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'scripts/**'
-      - 'migrations/**'
-      - 'package.json'
-      - 'wrangler.jsonc'
-      - '.github/workflows/deploy.yml'
+  # Publicar somente por Run workflow ou solicitacao explicita.
   workflow_dispatch:
 
 permissions:
