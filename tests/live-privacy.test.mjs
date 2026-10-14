@@ -7,7 +7,7 @@ import {privacyRoutes,retentionEligibility} from '../src/privacy.js';
 import {extractQrToken} from '../public/qr-scanner.js';
 async function setup(){
  const db=new DatabaseSync(':memory:');
- for(const name of ['0001_init.sql','0002_v1.sql','0003_v2.sql','0004_guest_type_limits.sql','0005_import_passkeys_checkin.sql','0006_live_scanner_retention.sql']){
+ for(const name of ['0001_init.sql','0002_v1.sql','0003_v2.sql','0004_guest_type_limits.sql','0005_import_passkeys_checkin.sql','0006_live_scanner_retention.sql','0007_child_ages.sql']){
   db.exec(await readFile(new URL('../migrations/'+name,import.meta.url),'utf8'));
  }
  const env={DB:{
