@@ -5,6 +5,12 @@ name: Deploy Libri RSVP
 on:
   # Publicar somente por Run workflow ou solicitacao explicita.
   workflow_dispatch:
+    inputs:
+      migration_0007_confirmed:
+        description: 'Confirme que a migração 0007_child_ages.sql já foi aplicada ao D1 libri-rsvp-db'
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -19,6 +25,15 @@ jobs:
     steps:
       - name: Baixar o commit aprovado
         uses: actions/checkout@v4
+
+      - name: Proteger produção contra falta da migração 0007
+        env:
+          MIGRATION_CONFIRMED: ${{ inputs.migration_0007_confirmed }}
+        run: |
+          if [ "$MIGRATION_CONFIRMED" != "true" ]; then
+            echo "::error::Não publicar: primeiro aplicar e verificar a migração 0007 no D1 libri-rsvp-db."
+            exit 1
+          fi
 
       - name: Node.js
         uses: actions/setup-node@v4
