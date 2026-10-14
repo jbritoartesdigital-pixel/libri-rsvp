@@ -14,7 +14,7 @@ async function fixture(){
   prepare(sql){const statement=db.prepare(sql),bound=args=>({
    first:async()=>statement.get(...args)||null,
    all:async()=>({results:statement.all(...args)}),
-   run:async()=>({meta:{changes:statement.run(...args).changes}}),
+   run:async()=>/^\\s*SELECT\\b/i.test(sql)?{results:statement.all(...args)}:{meta:{changes:statement.run(...args).changes}},
   });return {...bound([]),bind(...args){return bound(args)}};},
   async batch(statements){db.exec('BEGIN');try{const r=[];for(const statement of statements)r.push(await statement.run());db.exec('COMMIT');return r}catch(error){db.exec('ROLLBACK');throw error}}
  };
