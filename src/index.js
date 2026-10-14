@@ -3819,8 +3819,8 @@ function csvResponse(guests, filename, language = "pt-BR") {
   const en = language === "en";
   const rows = [
     en
-      ? ["Primary contact","Family / group","Status","Confirmed people","Adults","Children","Total limit","Adult limit","Child limit","Phone","Dietary restrictions","Notes","Sweet message","Source","Responded at"]
-      : ["Responsável","Família / grupo","Status","Pessoas confirmadas","Adultos","Crianças","Limite total","Limite adultos","Limite crianças","Telefone","Restrição alimentar","Observações","Mensagem carinhosa","Origem","Respondido em"],
+      ? ["Primary contact","Family / group","Status","Confirmed people","Adults","Children","Child ages","Total limit","Adult limit","Child limit","Phone","Dietary restrictions","Notes","Sweet message","Source","Responded at"]
+      : ["Responsável","Família / grupo","Status","Pessoas confirmadas","Adultos","Crianças","Idades das crianças","Limite total","Limite adultos","Limite crianças","Telefone","Restrição alimentar","Observações","Mensagem carinhosa","Origem","Respondido em"],
   ];
 
 
@@ -3837,6 +3837,8 @@ function csvResponse(guests, filename, language = "pt-BR") {
       .join(" | ");
 
 
+    const ages = guest.members.filter(m=>m.person_type==="child").map(m=>`${m.name}: ${m.child_age==null?(en?"unknown":"não informada"):`${m.child_age} ${en?"years":"anos"}`}`).join(" | ");
+
     rows.push([
       guest.primary_name,
       guest.group_label || "",
@@ -3844,6 +3846,7 @@ function csvResponse(guests, filename, language = "pt-BR") {
       guest.confirmed_people,
       adults,
       children,
+      ages,
       guest.max_people_allowed ?? "",
       guest.max_adults_allowed ?? "",
       guest.max_children_allowed ?? "",
