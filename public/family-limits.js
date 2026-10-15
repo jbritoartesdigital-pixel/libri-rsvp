@@ -15,3 +15,19 @@ export function effectiveFamilyLimit(value,eventDefault){
  const fallback=parseFamilyLimit(eventDefault,{minimum:1});
  return Number.isNaN(fallback)?null:fallback;
 }
+
+/**
+ * Unfilled seats in flexible invitations. Only confirmed attendees occupy a seat.
+ * An undefined event limit must NOT trigger the final review prompt.
+ */
+export function flexibleRemainingSlots({composition=false,adultLimit=null,childLimit=null,limit=null,confirmedAdults=0,confirmedChildren=0}={}){
+ const usedAdults=Math.max(0,Number(confirmedAdults)||0);
+ const usedChildren=Math.max(0,Number(confirmedChildren)||0);
+ if(composition){
+  return {adults:Math.max(0,(Number(adultLimit)||0)-usedAdults),
+    children:Math.max(0,(Number(childLimit)||0)-usedChildren),
+    total:Math.max(0,(Number(adultLimit)||0)-usedAdults)+Math.max(0,(Number(childLimit)||0)-usedChildren)};
+ }
+ if(!Number.isFinite(limit)||limit<1)return {adults:0,children:0,total:0};
+ return {adults:null,children:null,total:Math.max(0,limit-usedAdults-usedChildren)};
+}

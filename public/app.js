@@ -1,5 +1,5 @@
 import {openGuestImport} from './import-wizard.js?v=20261010-partial-safe-import-v1';
-import {parseFamilyLimit,effectiveFamilyLimit} from './family-limits.js?v=20261014-mobile-capacity-v1';
+import {parseFamilyLimit,effectiveFamilyLimit,flexibleRemainingSlots} from './family-limits.js?v=20261014-vacancy-review-v1';
 import {passkeyLogin,passkeysModal,showImportHistory,mountFeatureSettings,receptionPage,publicQrPage} from './feature-ui.js?v=20261010-table-parser-v2';
 const app=document.querySelector("#app"),toastEl=document.querySelector("#toast"),path=location.pathname;
 let toastTimer,suggestTimer,appearanceDirty=false,activeInterfaceLanguage="pt-BR";
@@ -406,7 +406,7 @@ async function api(url,options={}){
  const headers={...(options.headers||{})};
  if(options.body!==undefined&&!(options.body instanceof FormData)&&!headers["Content-Type"])headers["Content-Type"]="application/json";
  const res=await fetch(url,{...options,headers}),ct=res.headers.get("content-type")||"",data=ct.includes("json")?await res.json():await res.text();
- if(!res.ok)throw new Error(translateServerMessage(data?.error||tr(activeInterfaceLanguage,"Não foi possível concluir.","Unable to complete the request."),activeInterfaceLanguage));
+ if(!res.ok){const err=new Error(translateServerMessage(data?.error||tr(activeInterfaceLanguage,"Não foi possível concluir.","Unable to complete the request."),activeInterfaceLanguage));err.code=data?.code;throw err}
  return data;
 }
 function toast(msg,error=false){clearTimeout(toastTimer);toastEl.textContent=msg;toastEl.className=`toast show${error?" error":""}`;toastTimer=setTimeout(()=>toastEl.className="toast",3500)}
@@ -1067,8 +1067,58 @@ function listRsvp(e,g){
   if(composition&&confirmedC>childLimit){scrollToProblem(limitStatus);return toast(tr(L,`Esta confirmação permite no máximo ${childLimit} criança(s).`,`This RSVP allows at most ${childLimit} children.`),true)}
   if(limit&&flex&&confirmed>limit){scrollToProblem(limitStatus);return toast(tr(L,`Limite de ${limit} pessoa(s), contando quem já está cadastrado.`,`Limit of ${limit} people, including pre-registered guests.`),true)}
   if(!responses.some(x=>x.attendance_status==="yes"||x.attendance_status==="no")&&!newMembers.length){scrollToProblem(root.querySelector(".public-family"));return toast(tr(L,"Marque quem vai ou não vai.","Select who is attending or not attending."),true)}
-  const b=ev.submitter;b.disabled=true;
-  try{const r=await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",body:JSON.stringify({website:d.get("website"),guest_id:g.id,member_responses:responses,new_members:newMembers,phone:d.get("phone"),dietary:d.get("dietary"),notes:d.get("notes"),love_message:d.get("love_message")})});if(r.waitlisted){root.innerHTML='<div class="success"><h2>Lista de espera</h2><p>'+esc(r.message)+'</p></div>';return;}const yes=r.guest.members?.some(m=>m.attendance_status==="yes");success(e,yes?"yes":"no",r.qr||[])}catch(x){toast(x.message,true);b.disabled=false}
+
+  const b=ev.submitter||listForm.querySelector('button[type="submit"],button:not([type])');
+  const payload={website:d.get("website"),guest_id:g.id,member_responses:responses,new_members:newMembers,
+    phone:d.get("phone"),dietary:d.get("dietary"),notes:d.get("notes"),love_message:d.get("love_message")};
+  const sendConfirmation=async(allowHomonym=false)=>{
+    if(b)b.disabled=true;
+    try{
+      const r=await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",
+        body:JSON.stringify({...payload,allow_homonym:allowHomonym})});
+      if(r.waitlisted){root.innerHTML='<div class="success"><h2>Lista de espera</h2><p>'+esc(r.message)+'</p></div>';return}
+      const yes=r.guest.members?.some(m=>m.attendance_status==="yes");
+      success(e,yes?"yes":"no",r.qr||[]);
+    }catch(x){
+      if(b)b.disabled=false;
+      if(x.code==="NAME_IN_ANOTHER_CONFIRMATION"&&!allowHomonym){
+        const popup=modal(tr(L,"Nome igual em outra família","Same name in another family"),
+          `<p>${tr(L,"Já existe uma pessoa com esse nome em outra confirmação. Se forem pessoas diferentes, você pode continuar normalmente.","Someone with this name is already registered in another family. If they are different people, you can continue.")}</p>
+          <p class="subtle">${tr(L,"Confira o nome antes de prosseguir para evitar incluir a mesma pessoa duas vezes.","Please check the name to avoid accidentally registering the same person twice.")}</p>
+          <div class="actions" style="margin-top:16px"><button type="button" class="btn secondary" data-homonym-back>${tr(L,"Voltar e conferir","Go back and check")}</button><button type="button" class="btn" data-homonym-yes>${tr(L,"É outra pessoa, continuar","Different person, continue")}</button></div>`);
+        popup.querySelector("[data-homonym-back]").onclick=()=>popup.closeModal();
+        popup.querySelector("[data-homonym-yes]").onclick=()=>{popup.closeModal();sendConfirmation(true)};
+        return;
+      }
+      toast(x.message,true);
+    }
+  };
+  const remaining=flex?flexibleRemainingSlots({composition,adultLimit,childLimit,limit,
+    confirmedAdults:confirmedA,confirmedChildren:confirmedC}):{total:0};
+  if(flex&&confirmed>0&&remaining.total>0){
+    const parts=[];
+    if(composition){
+      if(remaining.adults>0)parts.push(tr(L,`${remaining.adults} ${remaining.adults===1?"adulto":"adultos"}`,`${remaining.adults} ${remaining.adults===1?"adult":"adults"}`));
+      if(remaining.children>0)parts.push(tr(L,`${remaining.children} ${remaining.children===1?"criança":"crianças"}`,`${remaining.children} ${remaining.children===1?"child":"children"}`));
+    }else{
+      parts.push(tr(L,`${remaining.total} ${remaining.total===1?"pessoa":"pessoas"}`,`${remaining.total} ${remaining.total===1?"person":"people"}`));
+    }
+    const popup=modal(tr(L,"Faltou alguém na confirmação?","Anyone else coming?"),
+      `<p>${tr(L,"Você ainda pode incluir","You can still include")} <strong>${esc(parts.join(tr(L," e "," and ")))}</strong> ${tr(L,"nesta confirmação.","in this RSVP.")}</p>
+      <p class="subtle">${tr(L,"Deseja adicionar essas pessoas ou enviar somente as presenças selecionadas?","Would you like to add more people or confirm only those already selected?")}</p>
+      <div class="actions" style="margin-top:16px">
+        <button type="button" class="btn secondary" data-add-people>${tr(L,"Adicionar pessoas","Add people")}</button>
+        <button type="button" class="btn" data-confirm-selected>${tr(L,"Confirmar assim mesmo","Confirm selected")}</button>
+      </div>`);
+    popup.querySelector("[data-add-people]").onclick=()=>{
+      popup.closeModal();
+      const pending=root.querySelector('[data-member][data-status="pending"]');
+      scrollToProblem(pending||newRoot?.closest(".members-editor")||newRoot);
+    };
+    popup.querySelector("[data-confirm-selected]").onclick=()=>{popup.closeModal();sendConfirmation()};
+    return;
+  }
+  await sendConfirmation();
  };
 }
 function freeRsvp(e){
