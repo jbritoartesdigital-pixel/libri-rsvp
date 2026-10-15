@@ -136,7 +136,7 @@ export default {
 
 
       if (error instanceof HttpError) {
-        return json({ error: error.message }, error.status);
+        return json({ error: error.message, ...(error.code ? {code:error.code}:{}) }, error.status);
       }
 
 
@@ -3293,22 +3293,18 @@ async function submitListRsvp(env, event, body) {
 
 
   if (newMembers.length) {
-    const duplicates = await findDuplicateMembers(
-      env,
-      event.id,
-      newMembers,
-      existing.id
-    );
-
-
-    if (duplicates.length) {
-      throw new HttpError(
-        400,
-        `${duplicates[0].name} já consta em outra confirmação deste evento.`
+    const duplicates = await findDuplicateMembers(env, event.id, newMembers, existing.id);
+    if (duplicates.length && body.allow_homonym !== true) {
+      // Same name can belong to two different people in different families.
+      // Require an explicit confirmation; preserve within-family duplicate protection.
+      const error = new HttpError(
+        409,
+        "Já existe alguém com esse nome em outra confirmação. Confira se é outra pessoa antes de continuar."
       );
+      error.code = "NAME_IN_ANOTHER_CONFIRMATION";
+      throw error;
     }
   }
-
 
   const projectedMembers = [...projectedExisting, ...newMembers];
   requirePublicChildAges(event,projectedMembers);
