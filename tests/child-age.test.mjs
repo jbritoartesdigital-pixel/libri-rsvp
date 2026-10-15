@@ -83,3 +83,54 @@ test('modo livre pergunta idade apenas quando opção está ativada',async()=>{
  }});
  assert.equal(noAge.status,200);
 });
+
+
+test('homônimos em famílias diferentes exigem confirmação explícita, mas não são bloqueados',async()=>{
+ const x=await fixture();x.event('hom','list',true);
+ const first=await x.send('/api/admin/events/hom/guests',{method:'POST',cookie:x.cookie,body:{
+  primary_name:'Marina',group_label:'Família Marina',max_adults_allowed:1,max_children_allowed:1,
+  members:[{name:'Marina',person_type:'adult',attendance_status:'pending'},
+   {name:'Pedro',person_type:'child',attendance_status:'pending'}]
+ }});
+ assert.equal(first.status,200);
+ const firstGuest=(await first.json()).guest;
+ const second=await x.send('/api/admin/events/hom/guests',{method:'POST',cookie:x.cookie,body:{
+  primary_name:'Clara',group_label:'Família Clara',max_adults_allowed:2,max_children_allowed:1,
+  members:[{name:'Clara',person_type:'adult',attendance_status:'pending'}]
+ }});
+ assert.equal(second.status,200);
+ const secondGuest=(await second.json()).guest;
+ const payload={guest_id:secondGuest.id,
+  member_responses:secondGuest.members.map(m=>({id:m.id,attendance_status:'yes'})),
+  new_members:[{name:'Pedro',person_type:'child',attendance_status:'yes',child_age:'0'}]};
+ const blocked=await x.send('/api/public/events/teste-hom/rsvp',{method:'POST',body:payload});
+ assert.equal(blocked.status,409);
+ assert.equal((await blocked.json()).code,'NAME_IN_ANOTHER_CONFIRMATION');
+ assert.equal(x.db.prepare("SELECT COUNT(*) AS n FROM guest_members WHERE name='Pedro' AND deleted_at IS NULL").get().n,1);
+ const confirmed=await x.send('/api/public/events/teste-hom/rsvp',{method:'POST',
+  body:{...payload,allow_homonym:true}});
+ assert.equal(confirmed.status,200);
+ assert.equal(x.db.prepare("SELECT COUNT(*) AS n FROM guest_members WHERE name='Pedro' AND deleted_at IS NULL").get().n,2);
+ assert.equal(x.db.prepare("SELECT COUNT(*) AS n FROM guest_members WHERE name='Pedro' AND guest_id=? AND deleted_at IS NULL").get(firstGuest.id).n,1);
+ const sameFamily=await x.send('/api/public/events/teste-hom/rsvp',{method:'POST',
+  body:{...payload,allow_homonym:true}});
+ assert.equal(sameFamily.status,400);
+ assert.match((await sameFamily.json()).error,/já está nesta confirmação/);
+ assert.equal(x.db.prepare("SELECT COUNT(*) AS n FROM guest_members WHERE name='Pedro' AND deleted_at IS NULL").get().n,2);
+});
+test('revisão das vagas respeita composição por idade e não aparece sem limite',async()=>{
+ const {flexibleRemainingSlots}=await import('../public/family-limits.js');
+ assert.deepEqual(flexibleRemainingSlots({composition:true,adultLimit:2,childLimit:1,
+  confirmedAdults:1,confirmedChildren:0}),{adults:1,children:1,total:2});
+ assert.deepEqual(flexibleRemainingSlots({composition:true,adultLimit:1,childLimit:1,
+  confirmedAdults:1,confirmedChildren:1}),{adults:0,children:0,total:0});
+ assert.deepEqual(flexibleRemainingSlots({composition:false,limit:4,
+  confirmedAdults:1,confirmedChildren:2}),{adults:null,children:null,total:1});
+ assert.deepEqual(flexibleRemainingSlots({composition:false,limit:null,
+  confirmedAdults:1,confirmedChildren:0}),{adults:0,children:0,total:0});
+ const app=await readFile(new URL('../public/app.js',import.meta.url),'utf8');
+ assert.match(app,/data-add-people/);
+ assert.match(app,/data-confirm-selected/);
+ assert.match(app,/if\(flex&&confirmed>0&&remaining\.total>0\)/);
+ assert.match(app,/NAME_IN_ANOTHER_CONFIRMATION/);
+});
