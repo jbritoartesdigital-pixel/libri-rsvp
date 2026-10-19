@@ -1,5 +1,5 @@
 import {openGuestImport} from './import-wizard.js?v=20261019-confirmed-homonyms-v1';
-import {parseFamilyLimit,effectiveFamilyLimit,flexibleRemainingSlots} from './family-limits.js?v=20261014-vacancy-review-v1';
+import {parseFamilyLimit,effectiveFamilyLimit,flexibleRemainingSlots,pendingRegisteredMembers} from './family-limits.js?v=20261019-strict-review-v1';
 import {passkeyLogin,passkeysModal,showImportHistory,mountFeatureSettings,receptionPage,publicQrPage} from './feature-ui.js?v=20261010-table-parser-v2';
 const app=document.querySelector("#app"),toastEl=document.querySelector("#toast"),path=location.pathname;
 let toastTimer,suggestTimer,appearanceDirty=false,activeInterfaceLanguage="pt-BR";
@@ -1093,6 +1093,29 @@ function listRsvp(e,g){
       toast(x.message,true);
     }
   };
+  // Strict lists cannot add new people, but pre-registered members may still be unanswered.
+  // Ask for a final review only when somebody is attending and someone else is pending.
+  const unanswered=!flex?pendingRegisteredMembers(g.members,responses):[];
+  if(!flex&&confirmed>0&&unanswered.length>0){
+    const names=unanswered.slice(0,5).map(m=>esc(m.name)).join(", ");
+    const more=unanswered.length>5
+      ?tr(L,` e mais ${unanswered.length-5}`,` and ${unanswered.length-5} more`):"";
+    const popup=modal(tr(L,"Você esqueceu de confirmar alguém?","Did you forget anyone?"),
+      `<p>${tr(L,"Ainda falta responder por","There is still no answer for")} <strong>${unanswered.length} ${tr(L,unanswered.length===1?"pessoa cadastrada":"pessoas cadastradas",unanswered.length===1?"registered person":"registered people")}</strong> ${tr(L,"nesta família.","in this family.")}</p>
+      <p class="subtle">${tr(L,"Sem resposta:","Unanswered:")} ${names}${esc(more)}.</p>
+      <p>${tr(L,"Deseja revisar quem vai ou não vai, ou enviar somente as respostas que já marcou?","Would you like to review who is attending, or send only the answers you have selected?")}</p>
+      <div class="actions" style="margin-top:16px">
+        <button type="button" class="btn secondary" data-review-registered>${tr(L,"Revisar convidados","Review guests")}</button>
+        <button type="button" class="btn" data-confirm-registered>${tr(L,"Confirmar assim mesmo","Confirm selected")}</button>
+      </div>`);
+    popup.querySelector("[data-review-registered]").onclick=()=>{
+      popup.closeModal();
+      const pending=root.querySelector(`[data-member="${unanswered[0].id}"]`);
+      if(pending)scrollToProblem(pending);
+    };
+    popup.querySelector("[data-confirm-registered]").onclick=()=>{popup.closeModal();sendConfirmation()};
+    return;
+  }
   const remaining=flex?flexibleRemainingSlots({composition,adultLimit,childLimit,limit,
     confirmedAdults:confirmedA,confirmedChildren:confirmedC}):{total:0};
   if(flex&&confirmed>0&&remaining.total>0){
