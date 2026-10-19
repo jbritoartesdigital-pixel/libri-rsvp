@@ -72,12 +72,27 @@ export async function guestExtraRoutes(request,env,url,api){
     }));
     if(incoming.some(r=>!short(r.primary_name)||!r.members?.length||r.members.some(m=>!short(m.name)||!['adult','child'].includes(m.person_type))))
      return json({error:'Revise os nomes e a classificação de cada família.'},400);
-    const old=(await query(env,"SELECT m.normalized_name FROM guest_members m JOIN guests g ON g.id=m.guest_id WHERE m.event_id=? AND m.deleted_at IS NULL AND g.deleted_at IS NULL",event.id).all()).results;
-    const seen=new Set(old.map(x=>x.normalized_name));const accepted=[],failed=[];
+    // A name is not a unique identity across different guest families.
+    // A same-family name can never be imported twice (including repeat uploads).
+    const old=(await query(env,"SELECT m.normalized_name, COALESCE(NULLIF(TRIM(g.group_label),''),g.primary_name) AS family_label FROM guest_members m JOIN guests g ON g.id=m.guest_id WHERE m.event_id=? AND m.deleted_at IS NULL AND g.deleted_at IS NULL",event.id).all()).results;
+    const seen=new Map(),accepted=[],failed=[];
+    for(const person of old){
+     if(!seen.has(person.normalized_name))seen.set(person.normalized_name,new Set());
+     seen.get(person.normalized_name).add(normalized(person.family_label));
+    }
     incoming.forEach((r,index)=>{
-     const all=r.members.map(m=>normalized(m.name));
-     if(all.some(n=>seen.has(n))||new Set(all).size!==all.length){failed.push({index,name:r.primary_name,error:'Nome duplicado ou já cadastrado.'});return;}
-     all.forEach(n=>seen.add(n));accepted.push(r);
+     const all=r.members.map(m=>normalized(m.name)),family=normalized(r.group_label||r.primary_name);
+     if(new Set(all).size!==all.length||all.some(n=>seen.get(n)?.has(family))){
+      failed.push({index,name:r.primary_name,error:'Nome repetido na mesma família ou família já importada.'});return;
+     }
+     if(!b.allow_homonyms&&all.some(n=>seen.has(n))){
+      failed.push({index,name:r.primary_name,error:'Nome igual em outra família. Confirme se são pessoas diferentes antes de importar.'});return;
+     }
+     for(const name of all){
+      if(!seen.has(name))seen.set(name,new Set());
+      seen.get(name).add(family);
+     }
+     accepted.push(r);
     });
     if(!accepted.length)return json({created:[],failed,batch_id:null});
     const saved=await api.bulkCreateGuests(env,event,accepted,'import'),created=saved.created||[];
@@ -87,7 +102,7 @@ export async function guestExtraRoutes(request,env,url,api){
      ...created.map(g=>query(env,"INSERT INTO import_batch_items(batch_id,guest_id) VALUES(?,?)",batchId,g.id))
     ]);
     if(api.audit)await api.audit(env,{eventId:event.id,actorRole:m[2]?'admin':'client',action:'guest_file_imported',details:{batch_id:batchId,created:created.length,failed:failed.length+(saved.failed||[]).length,file_name:short(b.file_name)}});
-    return json({created:created.map(g=>({id:g.id,primary_name:g.primary_name})),failed:[...failed,...(saved.failed||[])],batch_id:created.length?batchId:null});
+    return json({created:created.map(g=>({id:g.id,primary_name:g.primary_name,group_label:g.group_label})),failed:[...failed,...(saved.failed||[])],batch_id:created.length?batchId:null});
    }
    if(method==='POST'&&m[4]==='imports'&&m[5]){
     const batch=await query(env,"SELECT * FROM import_batches WHERE id=? AND event_id=?",m[5],event.id).first();
