@@ -266,9 +266,11 @@ export async function parseGuestFile(file,options={}){
 const guestKey=s=>fold(s).replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
 /** Read-only preflight: never guess whether unclassified guests are adults. */
 export function planImport(groups=[],existingNames=new Map()){
- const issues=groups.map(()=>[]),seen=new Map();
+ const issues=groups.map(()=>[]),warnings=groups.map(()=>[]),seen=new Map();
  const note=(i,s)=>{if(!issues[i].includes(s))issues[i].push(s);};
+ const warn=(i,s)=>{if(!warnings[i].includes(s))warnings[i].push(s);};
  groups.forEach((g,i)=>{
+  const group=guestKey(g.group_label||g.primary_name||'');
   if(!String(g.group_label||'').trim())note(i,'Informe o nome da família.');
   if(!g.members?.length)note(i,'Adicione pelo menos uma pessoa.');
   for(const m of g.members||[]){
@@ -276,21 +278,32 @@ export function planImport(groups=[],existingNames=new Map()){
    if(!['adult','child'].includes(m.person_type))note(i,'Defina adulto ou criança para todas as pessoas.');
    const name=guestKey(m.name);
    if(!name)continue;
-   if(existingNames.has(name))note(i,'Nome já cadastrado: '+m.name+'.');
-   if(seen.has(name)){
-    const original=seen.get(name);
-    note(i,'Nome repetido na lista: '+m.name+'.');
-    note(original,'Nome repetido na lista: '+m.name+'.');
-   }else seen.set(name,i);
+   if(existingNames.has(name)){
+    const labels=existingNames.get(name)||[];
+    if(labels.some(label=>guestKey(label)===group))
+     note(i,'Nome já cadastrado nesta família: '+m.name+'.');
+    else warn(i,'Nome igual já cadastrado em outra família: '+m.name+'.');
+   }
+   const matches=seen.get(name)||[];
+   for(const previous of matches){
+    if(previous.group===group){
+     note(i,'Nome repetido na mesma família: '+m.name+'.');
+     note(previous.i,'Nome repetido na mesma família: '+m.name+'.');
+    }else{
+     warn(i,'Nome igual em outra família da lista: '+m.name+'.');
+     warn(previous.i,'Nome igual em outra família da lista: '+m.name+'.');
+    }
+   }
+   matches.push({i,group});seen.set(name,matches);
   }
  });
  const ready=[],pending=[];
  for(let i=0;i<groups.length;i++)(issues[i].length?pending:ready).push(i);
- return {ready,pending,issues};
+ return {ready,pending,issues,warnings};
 }
 export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,onSaved}){
  const base=role==='admin'?'/api/admin/events/'+eventId:'/api/client/'+encodeURIComponent(token);
- let groups=[],file=null,existingNames=new Map(),currentPlan={ready:[],pending:[],issues:[]},completed=0;
+ let groups=[],file=null,existingNames=new Map(),currentPlan={ready:[],pending:[],issues:[],warnings:[]},completed=0;
  const w=modal('Importar lista de convidados',
   '<p>PDF (inclusive digitalizado via OCR), Excel (.xlsx) ou CSV. O arquivo é analisado neste dispositivo, e você revisa as famílias antes de salvar. O OCR pode demorar e não garante nomes corretos.</p>'+
   '<div class="field"><label>Arquivo</label><input id="guestFile" type="file" accept=".pdf,.xlsx,.csv,.txt,application/pdf,text/csv"></div>'+
@@ -302,11 +315,13 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
  const render=()=>{
   currentPlan=planImport(groups,existingNames);
   const count=groups.reduce((n,g)=>n+g.members.length,0);
-  const pendingCount=currentPlan.pending.length, readyCount=currentPlan.ready.length;
+  const pendingCount=currentPlan.pending.length, readyCount=currentPlan.ready.length,
+   homonymFamilies=currentPlan.warnings.filter((list,i)=>list.length&&currentPlan.ready.includes(i)).length;
   status.innerHTML='<strong>'+groups.length+' família(s), '+count+' pessoa(s) reconhecida(s).</strong><p>'+readyCount+' família(s) pronta(s) para importar'+
    (pendingCount?'; '+pendingCount+' precisam de revisão e serão mantidas fora da importação.':' e nenhuma pendência encontrada.')+'</p>'+
    (completed?'<p>'+completed+' família(s) já importada(s) nesta sessão.</p>':'')+
-   '<p style="font-size:12px">Confira nomes, adultos e crianças antes de salvar. Nomes repetidos ou sem classificação não serão enviados.</p>';
+   (homonymFamilies?'<p><strong>'+homonymFamilies+' família(s) têm nomes iguais a outras famílias.</strong> Podem ser homônimos; confira e confirme antes de importar.</p>':'')+
+   '<p style="font-size:12px">Confira nomes, adultos e crianças antes de salvar. Nomes repetidos na mesma família ou sem classificação não serão enviados.</p>';
   const placeholders=groups.reduce((n,g)=>n+g.members.filter(m=>/nome pendente/i.test(m.name)).length,0);
   const skipped=groups.skippedGroups||[];
   if(skipped.length)status.innerHTML+='<p><strong>'+skipped.length+' família(s) sem quantidade definida ficaram de fora:</strong> '+skipped.map(esc).join(', ')+'.</p>';
@@ -319,7 +334,7 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
    '<div class="import-member" data-member="'+k+'"><label class="import-member-name"><span>Nome do integrante</span><input class="import-name" aria-label="Nome do integrante" value="'+esc(m.name)+'"></label>'+
    '<label class="import-member-kind"><span>Classificação</span><select class="import-kind" aria-label="Classificação do integrante"><option value="unknown" '+(m.person_type==='unknown'?'selected':'')+'>A conferir</option><option value="adult" '+(m.person_type==='adult'?'selected':'')+'>Adulto</option><option value="child" '+(m.person_type==='child'?'selected':'')+'>Criança</option></select></label>'+
    '<button type="button" class="btn secondary small remove-member" aria-label="Remover integrante">Remover</button></div>').join('')+
-   '</div>'+(currentPlan.issues[i].length?'<div class="notice" style="margin:8px 0;border-color:#bf7233"><strong>Revisar antes de importar</strong><p>'+currentPlan.issues[i].map(x=>esc(x)).join(' ')+'</p></div>':'<p class="subtle" style="margin:8px 0">✓ Esta família está pronta.</p>')+'<div class="actions"><button class="btn secondary small add-member" type="button">+ Integrante</button><button class="btn secondary small remove-family" type="button">Remover família</button></div></section>').join('');
+   '</div>'+(currentPlan.issues[i].length?'<div class="notice" style="margin:8px 0;border-color:#bf7233"><strong>Revisar antes de importar</strong><p>'+currentPlan.issues[i].map(x=>esc(x)).join(' ')+'</p></div>':currentPlan.warnings[i].length?'<div class="notice" style="margin:8px 0"><strong>Nome igual em outra família (aviso)</strong><p>'+currentPlan.warnings[i].map(x=>esc(x)).join(' ')+'</p></div>':'<p class="subtle" style="margin:8px 0">✓ Esta família está pronta.</p>')+'<div class="actions"><button class="btn secondary small add-member" type="button">+ Integrante</button><button class="btn secondary small remove-family" type="button">Remover família</button></div></section>').join('');
   preview.querySelectorAll('[data-group]').forEach(row=>{
    const idx=Number(row.dataset.group);
    row.querySelector('.family-label').onchange=e=>{groups[idx].group_label=e.target.value;groups[idx].primary_name=groups[idx].members[0]?.name||'';render();};
@@ -360,6 +375,8 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   const ready=currentPlan.ready.map(i=>({index:i,group:groups[i]}));
   if(!ready.length)return toast('Nenhuma família está pronta. Use Ver pendências para revisar.',true);
   if(currentPlan.pending.length&&!confirm('Importar somente '+ready.length+' família(s) pronta(s)? As '+currentPlan.pending.length+' família(s) pendente(s) não serão importadas agora.'))return;
+  const homonymFamilies=ready.filter(({index})=>currentPlan.warnings[index]?.length);
+  if(homonymFamilies.length&&!confirm('Há nomes iguais em '+homonymFamilies.length+' família(s), mas em grupos diferentes.\n\nVerifique se são pessoas distintas. Deseja importar todas as famílias selecionadas mesmo assim?'))return;
   const placeholders=ready.reduce((n,x)=>n+x.group.members.filter(m=>/nome pendente/i.test(m.name)).length,0);
   const skipped=groups.skippedGroups||[];
   if((placeholders||skipped.length)&&!confirm(
@@ -380,10 +397,11 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
   if(rows.some(g=>!g.primary_name||g.members.some(m=>!m.name||!['adult','child'].includes(m.person_type))))return toast('Há campos inválidos. Revise as pendências.',true);
   submit.disabled=true;
   try{
-   const result=await api(base+'/import',{method:'POST',body:JSON.stringify({rows,file_name:file?.name||'Lista',source_type:file?.name.split('.').pop()||'arquivo'})});
-   const createdKeys=new Set((result.created||[]).map(g=>guestKey(g.primary_name)));
+   const result=await api(base+'/import',{method:'POST',body:JSON.stringify({rows,file_name:file?.name||'Lista',source_type:file?.name.split('.').pop()||'arquivo',allow_homonyms:homonymFamilies.length>0})});
+   const familyKey=g=>guestKey(g.group_label)+'|'+guestKey(g.primary_name||g.members?.[0]?.name);
+   const createdKeys=new Set((result.created||[]).map(familyKey));
    const succeededIndices=new Set();
-   submitted.forEach(g=>{if(createdKeys.has(guestKey(g.members[0]?.name)))g.indices.forEach(n=>succeededIndices.add(n));});
+   submitted.forEach(g=>{if(createdKeys.has(familyKey(g)))g.indices.forEach(n=>succeededIndices.add(n));});
    const count=Number(result.created?.length||0);
    completed+=count;
    if(count)onSaved?.();
@@ -392,10 +410,10 @@ export function openGuestImport({event,role,eventId,token,api,toast,modal,esc,on
    if(!count){render();return;}
    groups=groups.filter((_,i)=>!succeededIndices.has(i));
    if(!groups.length){w.closeModal();return;}
-   for(const g of submitted.filter(g=>createdKeys.has(guestKey(g.members[0]?.name))))
+   for(const g of submitted.filter(g=>createdKeys.has(familyKey(g))))
     for(const m of g.members){
-     const key=guestKey(m.name);
-     existingNames.set(key,[g.group_label]);
+     const key=guestKey(m.name),previous=existingNames.get(key)||[];
+     if(!previous.some(label=>guestKey(label)===guestKey(g.group_label)))existingNames.set(key,[...previous,g.group_label]);
     }
    render();
    fix.hidden=!currentPlan.pending.length;

@@ -1,4 +1,4 @@
-import {openGuestImport} from './import-wizard.js?v=20261010-partial-safe-import-v1';
+import {openGuestImport} from './import-wizard.js?v=20261019-confirmed-homonyms-v1';
 import {parseFamilyLimit,effectiveFamilyLimit,flexibleRemainingSlots} from './family-limits.js?v=20261014-vacancy-review-v1';
 import {passkeyLogin,passkeysModal,showImportHistory,mountFeatureSettings,receptionPage,publicQrPage} from './feature-ui.js?v=20261010-table-parser-v2';
 const app=document.querySelector("#app"),toastEl=document.querySelector("#toast"),path=location.pathname;
