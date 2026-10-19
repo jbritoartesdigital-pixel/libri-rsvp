@@ -31,3 +31,16 @@ export function flexibleRemainingSlots({composition=false,adultLimit=null,childL
  if(!Number.isFinite(limit)||limit<1)return {adults:0,children:0,total:0};
  return {adults:null,children:null,total:Math.max(0,limit-usedAdults-usedChildren)};
 }
+
+/**
+ * Only members of this pre-registered family who still have no RSVP answer.
+ * A yes/no choice must never be presented as unanswered.
+ * Does not include additional seats or newly added guests.
+ */
+export function pendingRegisteredMembers(members=[],responses=[]){
+ const statuses=new Map((responses||[]).map(item=>[String(item.id),item.attendance_status]));
+ return (members||[]).filter(member=>{
+  const state=statuses.get(String(member.id))??member.attendance_status??"pending";
+  return state==="pending";
+ });
+}
