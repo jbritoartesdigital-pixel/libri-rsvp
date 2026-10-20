@@ -148,7 +148,10 @@ test('cadastro manual pela Libri inclui o contato automaticamente como adulto pe
  assert.equal(x.db.prepare("SELECT COUNT(*) AS n FROM guest_members WHERE guest_id=?").get(guest.id).n,1);
  const found=await x.send('/api/public/events/teste-main-contact/suggestions?q=Jo%C3%A3o');
  assert.equal(found.status,200);
- assert.match(await found.text(),/João Silva/);
+ const suggestions=(await found.json()).suggestions;
+ assert.equal(suggestions.length,1);
+ assert.ok(suggestions[0].member_id);
+ assert.match(suggestions[0].display_name,/João S\./);
 });
 
 test('cadastro pela cliente preenche contato faltante uma vez e conserva pessoas pré-cadastradas',async()=>{
