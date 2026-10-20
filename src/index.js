@@ -2492,6 +2492,20 @@ async function createGuest(env, event, body, source) {
   }
 
   const members = normalizeManagedMembers(body.members, body.response_status);
+  // A manually created closed-list contact is also an included adult.
+  // Do not change imported families, free RSVP records, or edits to existing guests.
+  if (event.rsvp_mode === "list" && (source === "admin" || source === "client") &&
+      !members.some((member) => normalizeName(member.name) === normalizeName(primaryName))) {
+    if (members.length >= 100) {
+      throw new HttpError(400, "A família já tem 100 pessoas. Inclua o contato principal na lista antes de salvar.");
+    }
+    members.unshift({
+      name: primaryName,
+      person_type: "adult",
+      attendance_status: "pending",
+      is_preapproved: true,
+    });
+  }
   assertValidChildAges(members);
   const status = deriveGroupStatus(members, allowedStatus(body.response_status));
   const createdAt = now();
@@ -2505,6 +2519,19 @@ async function createGuest(env, event, body, source) {
     maxAdultsAllowed,
     maxChildrenAllowed,
   });
+  if (event.rsvp_mode === "list" && normalizeListBehavior(event.list_behavior) === "flexible" &&
+      (source === "admin" || source === "client")) {
+    const appliedLimit = maxPeopleAllowed || Number(event.max_people_per_rsvp || 0);
+    if (appliedLimit && members.length > appliedLimit) {
+      throw new HttpError(400, "A família ultrapassa o limite de pessoas. Revise as vagas e inclua o contato principal.");
+    }
+    if (maxAdultsAllowed !== null && countMembers(members, "adult") > maxAdultsAllowed) {
+      throw new HttpError(400, "O contato principal precisa de uma vaga de adulto. Revise o limite da família.");
+    }
+    if (maxChildrenAllowed !== null && countMembers(members, "child") > maxChildrenAllowed) {
+      throw new HttpError(400, "O limite de crianças cadastradas foi ultrapassado.");
+    }
+  }
 
   const statements = [
     env.DB.prepare(`
