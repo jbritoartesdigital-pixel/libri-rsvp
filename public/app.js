@@ -649,7 +649,8 @@ function guestModal({event,role,eventId,token,guest=null,onSaved}){
  const memberKey=name=>String(name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9\s]/g," ").replace(/\s+/g," ").trim();
  const syncPrimaryContact=()=>{
   // Existing records may intentionally have a different contact person: never rewrite them.
-  if(guest||!isList)return true;
+  if(guest)return true;
+  if(!isList){const first=root.firstElementChild?.querySelector(".mname");if(first&&(!touched||!first.value.trim()))first.value=primary.value;return true;}
   const key=memberKey(primary.value),all=[...root.querySelectorAll(".mname")];
   if(!key)return true;
   const differentMatch=all.find(i=>i!==autoContactInput&&memberKey(i.value)===key);
