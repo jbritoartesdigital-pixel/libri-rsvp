@@ -146,7 +146,7 @@ test('cadastro manual pela Libri inclui o contato automaticamente como adulto pe
  assert.deepEqual(guest.members.map(m=>[m.name,m.person_type,m.attendance_status]),
   [['João Silva','adult','pending']]);
  assert.equal(x.db.prepare("SELECT COUNT(*) AS n FROM guest_members WHERE guest_id=?").get(guest.id).n,1);
- const found=await x.send('/api/public/events/teste-main-contact/suggest?q=Jo%C3%A3o');
+ const found=await x.send('/api/public/events/teste-main-contact/suggestions?q=Jo%C3%A3o');
  assert.equal(found.status,200);
  assert.match(await found.text(),/João Silva/);
 });
