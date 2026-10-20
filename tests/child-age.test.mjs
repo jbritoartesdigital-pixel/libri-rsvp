@@ -134,3 +134,74 @@ test('revisão das vagas respeita composição por idade e não aparece sem limi
  assert.match(app,/if\(flex&&confirmed>0&&remaining\.total>0\)/);
  assert.match(app,/NAME_IN_ANOTHER_CONFIRMATION/);
 });
+
+
+test('cadastro manual pela Libri inclui o contato automaticamente como adulto pesquisável',async()=>{
+ const x=await fixture();x.event('main-contact','list',false,'strict');
+ const created=await x.send('/api/admin/events/main-contact/guests',{method:'POST',cookie:x.cookie,body:{
+  primary_name:'João Silva',group_label:'Família Silva',members:[],
+ }});
+ assert.equal(created.status,200,await created.clone().text());
+ const guest=(await created.json()).guest;
+ assert.deepEqual(guest.members.map(m=>[m.name,m.person_type,m.attendance_status]),
+  [['João Silva','adult','pending']]);
+ assert.equal(x.db.prepare("SELECT COUNT(*) AS n FROM guest_members WHERE guest_id=?").get(guest.id).n,1);
+ const found=await x.send('/api/public/events/teste-main-contact/suggestions?q=Jo%C3%A3o');
+ assert.equal(found.status,200);
+ const suggestions=(await found.json()).suggestions;
+ assert.equal(suggestions.length,1);
+ assert.ok(suggestions[0].member_id);
+ assert.match(suggestions[0].display_name,/João S\./);
+});
+
+test('cadastro pela cliente preenche contato faltante uma vez e conserva pessoas pré-cadastradas',async()=>{
+ const x=await fixture();x.event('client-contact','list',false,'strict');
+ x.db.prepare("UPDATE events SET client_token='token_contacto',client_permissions='{}' WHERE id='client-contact'").run();
+ const added=await x.send('/api/client/token_contacto/guests',{method:'POST',body:{
+  primary_name:'Marina',group_label:'Família Marina',members:[
+   {name:'Lia',person_type:'child',attendance_status:'pending'}
+  ]
+ }});
+ assert.equal(added.status,200,await added.clone().text());
+ const guest=(await added.json()).guest;
+ assert.deepEqual(guest.members.map(m=>[m.name,m.person_type]),
+  [['Marina','adult'],['Lia','child']]);
+ const updated=await x.send('/api/client/token_contacto/guests/'+encodeURIComponent(guest.id),{
+  method:'PATCH',body:{primary_name:'Responsável diferente',phone:'123456',members:guest.members}
+ });
+ assert.equal(updated.status,200);
+ const saved=(await updated.json()).guest;
+ assert.deepEqual(saved.members.map(m=>m.name),['Marina','Lia']);
+ assert.equal(saved.primary_name,'Responsável diferente');
+});
+
+test('contato já incluído não duplica, inclusive com diferenças de maiúsculas e acentuação',async()=>{
+ const x=await fixture();x.event('dedup-contact','list',false,'strict');
+ const added=await x.send('/api/admin/events/dedup-contact/guests',{method:'POST',cookie:x.cookie,body:{
+  primary_name:'José',members:[{name:'jose',person_type:'adult',attendance_status:'pending'}]
+ }});
+ assert.equal(added.status,200);
+ const g=(await added.json()).guest;
+ assert.deepEqual(g.members.map(m=>m.name),['jose']);
+});
+
+test('limite flexível sem vaga de adulto não aceita acrescentar titular silenciosamente',async()=>{
+ const x=await fixture();x.event('limit-contact','list',false,'flexible');
+ const bad=await x.send('/api/admin/events/limit-contact/guests',{method:'POST',cookie:x.cookie,body:{
+  primary_name:'Responsável',max_adults_allowed:0,max_children_allowed:1,
+  members:[{name:'Bebê',person_type:'child',attendance_status:'pending'}]
+ }});
+ assert.equal(bad.status,400);
+ assert.match((await bad.json()).error,/vaga de adulto|limite de pessoas/);
+ assert.equal(x.db.prepare("SELECT COUNT(*) n FROM guests WHERE event_id='limit-contact'").get().n,0);
+});
+
+test('contrato do formulário espelha contato novo e verifica no envio, sem alterar edições antigas',async()=>{
+ const app=await readFile(new URL('../public/app.js',import.meta.url),'utf8');
+ const modal=app.slice(app.indexOf('function guestModal('),app.indexOf('function bulkModal('));
+ assert.match(modal,/const syncPrimaryContact=\(\)=>/);
+ assert.match(modal,/if\(guest\)return true/);
+ assert.match(modal,/primary\.oninput=syncPrimaryContact/);
+ assert.match(modal,/primary\.onchange=syncPrimaryContact/);
+ assert.match(modal,/if\(!syncPrimaryContact\(\)\)/);
+});
