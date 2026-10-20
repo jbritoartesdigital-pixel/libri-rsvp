@@ -197,7 +197,7 @@ test('contrato do formulário espelha contato novo e verifica no envio, sem alte
  const app=await readFile(new URL('../public/app.js',import.meta.url),'utf8');
  const modal=app.slice(app.indexOf('function guestModal('),app.indexOf('function bulkModal('));
  assert.match(modal,/const syncPrimaryContact=\(\)=>/);
- assert.match(modal,/if\(guest\|\|!isList\)return true/);
+ assert.match(modal,/if\(guest\)return true/);
  assert.match(modal,/primary\.oninput=syncPrimaryContact/);
  assert.match(modal,/primary\.onchange=syncPrimaryContact/);
  assert.match(modal,/if\(!syncPrimaryContact\(\)\)/);
