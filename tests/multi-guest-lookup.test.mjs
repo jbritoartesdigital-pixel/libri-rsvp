@@ -13,7 +13,7 @@ async function fixture(){
    first:async()=>statement.get(...args)||null,
    all:async()=>({results:statement.all(...args)}),
    run:async()=>({meta:{changes:statement.run(...args).changes}})
-  });return {...bound([]),bind(...args){return bound(args)}},
+  });return {...bound([]),bind(...args){return bound(args)}};},
   async batch(statements){db.exec('BEGIN');try{const output=[];for(const stmt of statements)output.push(await stmt.run());db.exec('COMMIT');return output}catch(err){db.exec('ROLLBACK');throw err}}
  };
  const env={DB:binding,ADMIN_PASSWORD:'fixture-password',SESSION_SECRET:'fixture-secret'};
