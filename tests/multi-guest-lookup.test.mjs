@@ -70,8 +70,8 @@ test('three independently registered names remain separate, and each RSVP is cou
   const saved=await x.send('/api/public/events/multi/rsvp',{method:'POST',body:{
    guest_id:row.id,member_responses:[{id:item.id,attendance_status:'yes'}],new_members:[]
   }});
-  assert.equal(saved.status,200,await saved.text());
   const result=await saved.json();
+  assert.equal(saved.status,200,JSON.stringify(result));
   assert.equal(result.guest.id,row.id);
  }
  assert.equal(x.db.prepare("SELECT COUNT(*) n FROM guests WHERE event_id='multi' AND deleted_at IS NULL").get().n,3);
@@ -91,7 +91,7 @@ test('public UI routes flagged events to multi-name picker and keeps legacy flow
  assert.match(src,/e\.extra_fields\?\.multi_guest_confirmation\?multiGuestLookup\(e\):publicLookup\(e\)/);
  assert.match(src,/function multiGuestLookup\(e\)/);
  assert.match(src,/picked\.set\(result\.guest\.id/);
- assert.match(src,/member_responses:\[/);
+ assert.match(src,/const member_responses=\[/);
  assert.match(src,/qrCodes\.push/);
  assert.match(src,/Tentar novamente as pendentes/);
 });
