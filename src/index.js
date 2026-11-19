@@ -4082,6 +4082,7 @@ function normalizeExtraFields(fields) {
     notes: Boolean(fields?.notes),
     love_message: fields?.love_message !== false,
     child_age: Boolean(fields?.child_age),
+    multi_guest_confirmation: Boolean(fields?.multi_guest_confirmation),
   };
 }
 

@@ -466,7 +466,7 @@ function eventForm(e=null){
  return`<form id="eventForm"><div class="form-section"><div class="field"><label>Nome do evento</label><input name="title" required value="${esc(e?.title||"")}"></div><div class="row"><div class="field"><label>Data</label><input type="date" name="event_date" value="${esc(e?.event_date||"")}"></div><div class="field"><label>Horário</label><input type="time" name="event_time" value="${esc(e?.event_time||"")}"></div></div><div class="field"><label>Mensagem inicial</label><textarea name="welcome_message">${esc(e?.welcome_message||"")}</textarea></div></div>
  <div class="form-section"><div class="row"><div class="field"><label>Tipo</label><select name="rsvp_mode"><option value="free" ${!e||e.rsvp_mode==="free"?"selected":""}>Confirmação livre</option><option value="list" ${e?.rsvp_mode==="list"?"selected":""}>Lista fechada</option></select></div><div class="field"><label>Idioma da interface</label><select name="interface_language"><option value="pt-BR" ${a.interface_language!=="en"?"selected":""}>Português (Brasil)</option><option value="en" ${a.interface_language==="en"?"selected":""}>English</option></select></div></div><div class="field"><label>Lista fechada</label><select name="list_behavior"><option value="strict" ${e?.list_behavior!=="flexible"?"selected":""}>Estrita • só cadastrados</option><option value="flexible" ${e?.list_behavior==="flexible"?"selected":""}>Flexível • permite adicionar até o limite</option></select></div>
  <div class="row"><div class="field"><label>Prazo</label><input type="date" name="rsvp_deadline" value="${esc(e?.rsvp_deadline||"")}"></div><div class="field"><label>Limite padrão</label><input type="number" min="1" max="100" name="max_people_per_rsvp" value="${esc(e?.max_people_per_rsvp??"")}" placeholder="Sem limite"></div></div></div>
- <div class="form-section"><h3>Campos opcionais</h3><div class="checks">${checkbox("phone","Telefone",f.phone)}${checkbox("dietary","Restrição alimentar",f.dietary)}${checkbox("notes","Observações",f.notes)}${checkbox("child_age","Idade de cada criança (na confirmação)",f.child_age)}${checkbox("love_message","Mensagem carinhosa 💌",e?f.love_message!==false:true)}</div></div>
+ <div class="form-section"><h3>Campos opcionais</h3><div class="checks">${checkbox("phone","Telefone",f.phone)}${checkbox("dietary","Restrição alimentar",f.dietary)}${checkbox("notes","Observações",f.notes)}${checkbox("child_age","Idade de cada criança (na confirmação)",f.child_age)}${checkbox("multi_guest_confirmation","Permitir confirmar vários nomes pré-cadastrados (lista individual)",f.multi_guest_confirmation)}${checkbox("love_message","Mensagem carinhosa 💌",e?f.love_message!==false:true)}</div></div>
  <div class="form-section"><h3>Permissões do painel privado</h3><div class="checks">${checkbox("pmg","Cadastrar e editar convidados",p.manage_guests)}${checkbox("pma","Editar aparência e enviar mídia",p.manage_appearance)}${checkbox("pmt","Editar textos",p.manage_texts)}${checkbox("pvm","Ver mensagens",p.view_messages)}${checkbox("peg","Exportar CSV",p.export_guests)}${checkbox("ped","Editar data, horário e mensagem",p.manage_event_details)}</div></div>
  <button class="btn block large">${e?"Salvar alterações":"Criar evento"}</button></form>`;
 }
@@ -479,7 +479,7 @@ function eventPayload(form,e=null){
    if(currentTexts[key]===undefined||currentTexts[key]===oldDefaults[key])publicTexts[key]=newDefaults[key];
   }
  }
- return{title:d.get("title"),event_date:d.get("event_date"),event_time:d.get("event_time"),welcome_message:d.get("welcome_message"),rsvp_mode:d.get("rsvp_mode"),list_behavior:d.get("list_behavior"),rsvp_deadline:d.get("rsvp_deadline"),max_people_per_rsvp:d.get("max_people_per_rsvp"),primary_color:e?.primary_color||"#b8735f",accent_color:e?.accent_color||"#f8efec",background_type:e?.background_type||"none",background_image_url:e?.background_image_url||"",background_video_url:e?.background_video_url||"",appearance_settings:{...currentAppearance,interface_language:newLang},public_texts:publicTexts,extra_fields:{phone:d.has("phone"),dietary:d.has("dietary"),notes:d.has("notes"),child_age:d.has("child_age"),love_message:d.has("love_message")},client_permissions:{manage_guests:d.has("pmg"),manage_appearance:d.has("pma"),manage_texts:d.has("pmt"),view_messages:d.has("pvm"),export_guests:d.has("peg"),manage_event_details:d.has("ped")}}
+ return{title:d.get("title"),event_date:d.get("event_date"),event_time:d.get("event_time"),welcome_message:d.get("welcome_message"),rsvp_mode:d.get("rsvp_mode"),list_behavior:d.get("list_behavior"),rsvp_deadline:d.get("rsvp_deadline"),max_people_per_rsvp:d.get("max_people_per_rsvp"),primary_color:e?.primary_color||"#b8735f",accent_color:e?.accent_color||"#f8efec",background_type:e?.background_type||"none",background_image_url:e?.background_image_url||"",background_video_url:e?.background_video_url||"",appearance_settings:{...currentAppearance,interface_language:newLang},public_texts:publicTexts,extra_fields:{phone:d.has("phone"),dietary:d.has("dietary"),notes:d.has("notes"),child_age:d.has("child_age"),multi_guest_confirmation:d.has("multi_guest_confirmation"),love_message:d.has("love_message")},client_permissions:{manage_guests:d.has("pmg"),manage_appearance:d.has("pma"),manage_texts:d.has("pmt"),view_messages:d.has("pvm"),export_guests:d.has("peg"),manage_event_details:d.has("ped")}}
 }
 function eventModal(e=null){
  const w=modal(e?"Editar evento":"Novo evento",eventForm(e),e?"O link público não muda quando o nome é alterado.":"A aparência pode ser refinada depois.",true);
@@ -1023,7 +1023,7 @@ async function publicApp(slug){
   ${a.logo_url?`<img class="public-event-logo" src="${esc(a.logo_url)}" alt="">`:""}${a.cover_url?`<img src="${esc(a.cover_url)}" alt="" style="width:100%;max-height:190px;object-fit:cover;border-radius:18px;margin-bottom:16px">`:""}
   <div class="eyebrow">${esc(t.eyebrow)}</div><h1>${esc(e.title)}</h1><div class="date" style="color:${a.muted_color}">${fmtDateLang(e.event_date,L)}${e.event_time?` • ${esc(e.event_time)}`:""}</div><p style="color:${a.muted_color}">${esc(e.welcome_message||t.intro)}</p>${e.rsvp_deadline?`<span class="chip" style="margin-bottom:14px">${tr(L,"Confirme até","RSVP by")} ${fmtDateLang(e.rsvp_deadline,L)}</span>`:""}<div id="publicFlow"></div></section></main>`;
   if(!e.accepting_rsvp)return closedPublic(e);
-  e.rsvp_mode==="list"?publicLookup(e):freeRsvp(e);
+  e.rsvp_mode==="list"?(e.extra_fields?.multi_guest_confirmation?multiGuestLookup(e):publicLookup(e)):freeRsvp(e);
  }catch(err){app.innerHTML=`<main class="public-page"><section class="public-card"><h1>${tr(activeInterfaceLanguage,"Convite indisponível","Invitation unavailable")}</h1><p>${esc(err.message)}</p></section></main>`}
 }
 function closedPublic(e){const L=eventLang(e),t=safeTexts(e);document.querySelector("#publicFlow").innerHTML=`<div class="success"><div class="bubble">♡</div><h2>${esc(t.closed_title)}</h2><p>${esc(translateServerMessage(e.closed_reason||tr(L,"O período de confirmação foi encerrado.","The RSVP period has ended."),L))}</p></div>`}
@@ -1032,6 +1032,129 @@ function publicLookup(e){
  root.innerHTML=`<div class="notice" style="margin:16px 0">${tr(L,"Digite pelo menos 2 letras. As sugestões aparecem abreviadas para proteger a lista.","Type at least 2 letters. Suggestions are abbreviated to protect the guest list.")}</div><div class="field public-search"><label>${esc(t.lookup_label)}</label><input id="lookup" autocomplete="off" placeholder="${esc(t.lookup_placeholder)}"><div id="suggestions" class="public-search-results" style="display:none"></div></div>`;
  const input=root.querySelector("#lookup"),box=root.querySelector("#suggestions");
  input.oninput=()=>{const q=input.value.trim();clearTimeout(suggestTimer);if(q.length<2){box.style.display="none";return}suggestTimer=setTimeout(async()=>{try{const d=await api(`/api/public/events/${encodeURIComponent(e.slug)}/suggestions?q=${encodeURIComponent(q)}`);box.innerHTML=d.suggestions.length?d.suggestions.map(s=>`<button type="button" class="public-search-result" data-guest="${s.guest_id}"><span class="public-search-avatar">${s.person_type==="child"?"🧒":"👤"}</span><span><strong>${esc(s.display_name)}</strong><small>${tr(L,"Toque para abrir sua confirmação","Tap to open your RSVP")}</small></span></button>`).join(""):`<div class="search-result"><span class="subtle">${tr(L,"Nenhuma sugestão encontrada.","No matches found.")}</span></div>`;box.style.display="block";box.querySelectorAll("[data-guest]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{const r=await api(`/api/public/events/${encodeURIComponent(e.slug)}/lookup`,{method:"POST",body:JSON.stringify({guest_id:b.dataset.guest})});listRsvp(e,r.guest)}catch(x){toast(x.message,true);b.disabled=false}})}catch(x){toast(x.message,true)}},220)};
+}
+function multiGuestLookup(e){
+ const root=document.querySelector("#publicFlow"),t=safeTexts(e),L=eventLang(e),f=e.extra_fields||{};
+ const picked=new Map(),qrCodes=[];
+ let debounce,sequence=0,saving=false,confirmedYes=false;
+ root.innerHTML=`<div class="notice" style="margin:16px 0"><strong>${tr(L,"Confirme várias pessoas da lista","RSVP for multiple people")}</strong><p>${tr(L,"Procure seu nome e depois os nomes de quem vai com você. Cada pessoa precisa estar cadastrada na lista.","Find your name, then add the others coming with you. Everyone must already be on the guest list.")}</p></div>
+ <div class="field public-search"><label>${esc(t.lookup_label)}</label><input id="lookup" autocomplete="off" placeholder="${esc(t.lookup_placeholder)}"><div id="suggestions" class="public-search-results" style="display:none"></div></div>
+ <div id="multiSelected" aria-live="polite"></div><div id="multiFeedback" aria-live="polite"></div>
+ <form id="multiForm"><div style="position:absolute;left:-9999px"><input name="website" autocomplete="off" tabindex="-1"></div>
+ ${f.phone?`<div class="field"><label>${tr(L,"Telefone de contato","Contact phone")}</label><input name="phone" inputmode="tel"></div>`:""}
+ ${f.dietary?`<div class="field"><label>${tr(L,"Restrição alimentar","Dietary restrictions")}</label><input name="dietary"></div>`:""}
+ ${f.notes?`<div class="field"><label>${tr(L,"Observações","Notes")}</label><textarea name="notes"></textarea></div>`:""}
+ ${f.love_message!==false?`<div class="field"><label>${esc(t.message_label)}</label><textarea name="love_message" placeholder="${esc(t.message_placeholder)}"></textarea></div>`:""}
+ <button class="btn block large" id="multiSubmit" type="submit" disabled>${tr(L,"Enviar confirmações","Submit RSVPs")}</button></form>`;
+ const input=root.querySelector("#lookup"),suggestions=root.querySelector("#suggestions"),chosen=root.querySelector("#multiSelected"),feedback=root.querySelector("#multiFeedback"),form=root.querySelector("#multiForm"),submit=root.querySelector("#multiSubmit");
+ const selectedEntries=()=>[...picked.values()];
+ const pendingEntries=()=>selectedEntries().filter(entry=>entry.choices.size&&!["saved","waitlisted"].includes(entry.state));
+ const render=()=>{
+  chosen.innerHTML=picked.size?`<section class="members-editor"><h3>${tr(L,"Pessoas selecionadas","Selected people")} (${picked.size})</h3><p class="subtle">${tr(L,"Marque Vai ou Não vai para cada nome. Você pode continuar procurando outros nomes acima.","Choose Attending or Not attending for each person. You can search for more names above.")}</p>
+  ${selectedEntries().map(entry=>`<div class="public-family multi-family" data-guest="${esc(entry.guest.id)}" style="margin:12px 0;padding:12px;border:1px solid rgba(120,120,120,.18);border-radius:14px">
+    <div class="row" style="align-items:center;justify-content:space-between;gap:10px"><strong>${esc(entry.guest.group_label||entry.guest.primary_name)}</strong>${entry.state==="saved"||entry.state==="waitlisted"?`<small>${entry.state==="saved"?tr(L,"✓ Enviado","✓ Submitted"):tr(L,"Lista de espera","Waitlisted")}</small>`:`<button type="button" class="btn ghost small" data-remove="${esc(entry.guest.id)}">${tr(L,"Remover","Remove")}</button>`}</div>
+    ${entry.guest.members.map(member=>`<div class="public-person multi-person" data-member="${esc(member.id)}" data-type="${esc(member.person_type)}">
+      <div><span class="public-person-name">${esc(member.name)}</span><small>${member.person_type==="child"?tr(L,"Criança","Child"):tr(L,"Adulto","Adult")}${member.attendance_status==="yes"?` • ${tr(L,"já constava como presente","previously attending")}`:member.attendance_status==="no"?` • ${tr(L,"já constava como ausente","previously declined")}`:""}</small></div>
+      <div class="member-attendance"><button type="button" class="yes ${entry.choices.get(member.id)==="yes"?"active":""}" data-choice="yes" ${entry.state==="saved"||entry.state==="waitlisted"||saving?"disabled":""}>✓ ${tr(L,"Vai","Attending")}</button><button type="button" class="no ${entry.choices.get(member.id)==="no"?"active":""}" data-choice="no" ${entry.state==="saved"||entry.state==="waitlisted"||saving?"disabled":""}>${tr(L,"Não vai","Not attending")}</button></div>
+      ${f.child_age&&member.person_type==="child"&&entry.choices.get(member.id)==="yes"?`<div class="field public-age-field"><label>${tr(L,"Idade (anos completos)","Age in completed years")}</label><input data-age="${esc(member.id)}" inputmode="numeric" pattern="[0-9]*" maxlength="2" value="${esc(entry.ages.get(member.id)??member.child_age??"")}" placeholder="0–17" ${saving?"disabled":""}></div>`:""}
+    </div>`).join("")}
+    ${entry.error?`<p class="notice" style="margin-top:8px">${esc(entry.error)}</p>`:""}</div>`).join("")}</section>`:"";
+  chosen.querySelectorAll("[data-remove]").forEach(button=>button.onclick=()=>{picked.delete(button.dataset.remove);render()});
+  chosen.querySelectorAll("[data-choice]").forEach(button=>button.onclick=()=>{
+   const card=button.closest("[data-guest]"),member=button.closest("[data-member]"),entry=picked.get(card.dataset.guest);
+   if(!entry||saving)return;
+   entry.choices.set(member.dataset.member,button.dataset.choice);
+   entry.error="";
+   render();
+  });
+  chosen.querySelectorAll("[data-age]").forEach(field=>field.oninput=()=>{
+   const entry=picked.get(field.closest("[data-guest]").dataset.guest);
+   if(entry)entry.ages.set(field.dataset.age,field.value);
+  });
+  submit.disabled=saving||pendingEntries().length===0;
+  submit.textContent=saving?tr(L,"Enviando confirmações...","Submitting RSVPs..."):selectedEntries().some(entry=>entry.state==="failed")?tr(L,"Tentar novamente as pendentes","Retry pending RSVPs"):tr(L,"Enviar confirmações","Submit RSVPs");
+ };
+ input.oninput=()=>{
+  const q=input.value.trim(),request=++sequence;
+  clearTimeout(debounce);
+  if(q.length<2){suggestions.style.display="none";return}
+  debounce=setTimeout(async()=>{
+   try{
+    const data=await api(`/api/public/events/${encodeURIComponent(e.slug)}/suggestions?q=${encodeURIComponent(q)}`);
+    if(request!==sequence)return;
+    suggestions.innerHTML=data.suggestions.length?data.suggestions.map(s=>`<button type="button" class="public-search-result" data-guest="${esc(s.guest_id)}">
+      <span class="public-search-avatar">${s.person_type==="child"?"🧒":"👤"}</span><span><strong>${esc(s.display_name)}</strong><small>${picked.has(s.guest_id)?tr(L,"Já selecionado","Already selected"):tr(L,"Adicionar à confirmação","Add to RSVP")}</small></span></button>`).join(""):`<div class="search-result"><span class="subtle">${tr(L,"Nenhum nome encontrado.","No matching name.")}</span></div>`;
+    suggestions.style.display="block";
+    suggestions.querySelectorAll("[data-guest]").forEach(button=>button.onclick=async()=>{
+     const id=button.dataset.guest;
+     if(picked.has(id)){input.value="";suggestions.style.display="none";toast(tr(L,"Essa pessoa já foi selecionada.","This person is already selected."));return}
+     if(picked.size>=12){toast(tr(L,"Confirme até 12 cadastros por vez.","Select up to 12 guest records at a time."),true);return}
+     button.disabled=true;
+     try{
+      const result=await api(`/api/public/events/${encodeURIComponent(e.slug)}/lookup`,{method:"POST",body:JSON.stringify({guest_id:id})});
+      if(picked.has(result.guest.id))return;
+      picked.set(result.guest.id,{guest:result.guest,choices:new Map(),ages:new Map(),state:"idle",error:""});
+      input.value="";sequence++;suggestions.style.display="none";feedback.innerHTML="";
+      render();
+     }catch(error){toast(error.message,true);button.disabled=false}
+    });
+   }catch(error){if(request===sequence)toast(error.message,true)}
+  },220);
+ };
+ form.onsubmit=async ev=>{
+  ev.preventDefault();
+  if(saving)return;
+  const entries=pendingEntries();
+  if(!entries.length){toast(tr(L,"Selecione pessoas e marque Vai ou Não vai.","Select names and choose Attending or Not attending."),true);return}
+  // Validate all selections before any request, avoiding avoidable partial submissions.
+  for(const entry of entries){
+   for(const member of entry.guest.members){
+    if(f.child_age&&member.person_type==="child"&&entry.choices.get(member.id)==="yes"){
+     const age=entry.ages.get(member.id)??member.child_age??"";
+     if(!Number.isInteger(parseFamilyLimit(age,{minimum:0,maximum:17}))){
+      toast(tr(L,`Informe a idade de ${member.name} (0 a 17 anos).`,`Enter ${member.name}'s age (0 to 17).`),true);
+      return;
+     }
+    }
+   }
+  }
+  const values=new FormData(form);
+  saving=true;render();feedback.innerHTML="";
+  for(const entry of entries){
+   try{
+    const member_responses=[...entry.choices].map(([id,status])=>{
+     const member=entry.guest.members.find(item=>item.id===id);
+     return {id,attendance_status:status,...(f.child_age&&member?.person_type==="child"&&status==="yes"?{child_age:entry.ages.get(id)??member.child_age??""}:{})};
+    });
+    const result=await api(`/api/public/events/${encodeURIComponent(e.slug)}/rsvp`,{method:"POST",body:JSON.stringify({
+     website:values.get("website"),guest_id:entry.guest.id,member_responses,new_members:[],
+     phone:values.get("phone"),dietary:values.get("dietary"),notes:values.get("notes"),love_message:values.get("love_message")
+    })});
+    entry.state=result.waitlisted?"waitlisted":"saved";
+    entry.error=result.waitlisted?result.message||tr(L,"Adicionado à lista de espera.","Added to the waitlist."):"";
+    if(!result.waitlisted){
+     qrCodes.push(...(result.qr||[]));
+     if(result.guest?.members?.some(member=>member.attendance_status==="yes"))confirmedYes=true;
+    }
+   }catch(error){entry.state="failed";entry.error=error.message||tr(L,"Não foi possível enviar esta resposta.","Could not submit this RSVP.")}
+  }
+  saving=false;
+  const failed=selectedEntries().filter(entry=>entry.state==="failed");
+  if(failed.length){
+   feedback.innerHTML=`<div class="notice" style="margin:12px 0"><strong>${tr(L,"Algumas respostas não foram enviadas.","Some RSVPs were not submitted.")}</strong><p>${tr(L,"As linhas marcadas como enviadas já foram salvas. Revise os erros e use Tentar novamente para as pendentes.","Entries marked Submitted are saved. Review the errors and retry pending entries.")}</p>${qrCodes.map(q=>`<p><a href="${esc(q.url)}" target="_blank" rel="noopener">${esc(q.name)}: ${tr(L,"abrir QR","open QR")}</a></p>`).join("")}</div>`;
+   render();return;
+  }
+  const waitlisted=selectedEntries().filter(entry=>entry.state==="waitlisted");
+  if(waitlisted.length){
+   root.innerHTML=`<div class="success"><h2>${tr(L,"Respostas registradas","Responses recorded")}</h2><p>${tr(L,"Algumas pessoas foram encaminhadas à lista de espera e ainda não estão confirmadas.","Some people were placed on the waitlist and are not yet confirmed.")}</p>
+    ${waitlisted.map(entry=>`<p><strong>${esc(entry.guest.primary_name)}</strong>: ${esc(entry.error)}</p>`).join("")}
+    ${qrCodes.map(q=>`<p><a class="btn secondary block" href="${esc(q.url)}" target="_blank" rel="noopener">${esc(q.name)}: ${tr(L,"abrir QR","open QR")}</a></p>`).join("")}
+    ${safeAppearance(e).invitation_url?`<a class="btn ghost block" href="${esc(safeAppearance(e).invitation_url)}">${tr(L,"Voltar ao convite","Back to invitation")}</a>`:""}</div>`;
+   return;
+  }
+  success(e,confirmedYes?"yes":"no",qrCodes);
+ };
+ render();
 }
 function listRsvp(e,g){
  const root=document.querySelector("#publicFlow"),f=e.extra_fields||{},t=safeTexts(e),L=eventLang(e),flex=g.list_behavior==="flexible";
